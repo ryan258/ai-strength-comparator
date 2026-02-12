@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="controls-grid">
+    <!-- Configuration Card -->
+    <div class="card">
+        <h2>Configuration</h2>
+        <form hx-post="/api/query" hx-trigger="submit" hx-target="#results-area" hx-swap="afterbegin" hx-ext="json-enc"
+            hx-indicator="#loading"
+            hx-on::before-request="document.getElementById('status-container').style.display='none'"
+            hx-on::after-request="document.getElementById('status-container').style.display='block'">
+
+            <div class="form-group">
+                <label for="paradoxId">Paradox Scenario</label>
+                <select name="paradoxId" id="paradoxId" required hx-get="/api/fragments/paradox-details"
+                    hx-target="#status-container" hx-trigger="change" hx-swap="innerHTML">
+                    {% for paradox in paradoxes %}
+                    <option value="{{ paradox.id }}" {% if initial_paradox and paradox.id == initial_paradox.id %}selected{% endif %}>{{ paradox.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Model Selection (Free Text + Datalist) -->
+            <div class="form-group">
+                <label for="modelName">AI Model (OpenRouter ID)</label>
+                <input type="text" name="modelName" id="modelName" list="model-suggestions"
+                    value="{{ default_model or '' }}" placeholder="e.g. provider/model-name" required>
+                <datalist id="model-suggestions">
+                    {% for model in models %}
+                    <option value="{{ model.id }}">{{ model.name }}</option>
+                    {% endfor %}
+                </datalist>
+                <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
+                    Select a preset or type ANY OpenRouter model ID.
+                </div>
+            </div>
+
+            <!-- System Instructions (Persona) -->
+            <div class="form-group">
+                <details>
+                    <summary style="cursor: pointer; font-size: 0.9rem; color: var(--accent-primary); margin-bottom: 0.5rem;">
+                        Persona (Prepended) <span style="font-size: 0.7rem;">▼</span>
+                    </summary>
+                    <div style="margin-top: 0.5rem;">
+                        <textarea name="systemPrompt" id="systemPrompt" rows="3" 
+                            placeholder="e.g. You are a strict utilitarian. Minimize suffering at all costs."
+                            style="width: 100%; font-family: monospace; font-size: 0.85rem; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;"></textarea>
+                        <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem;">
+                            Prepends this text directly to the user prompt (stronger adherence).
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <div class="form-group">
+                <label for="iterations">Iterations</label>
+                <input type="number" name="iterations" id="iterations" value="5" min="1" max="{{ max_iterations }}">
+            </div>
+
+            <button type="submit" class="btn btn-primary" hx-disabled-elt="this">Run Experiment</button>
+        </form>
+    </div>
+
+    <!-- Status/Info Card -->
+    <!-- Status/Info Card -->
+    <div class="card">
+        <h2>System Status</h2>
+        <div id="loading" class="htmx-indicator">
+            Running simulation... <span class="status-badge"
+                style="color: var(--bg-color); background: var(--accent-primary);">BUSY</span>
+        </div>
+
+        <div id="status-container">
+            {% if initial_paradox %}
+                {% with paradox=initial_paradox, scenario_text=initial_scenario_text %}
+                    {% include "partials/paradox_details.html" %}
+                {% endwith %}
+            {% else %}
+                <div id="status-message">
+                    Ready to process.
+                </div>
+                <div style="margin-top: 1rem; font-size: 0.9rem; opacity: 0.7;">
+                    Select a paradox and click 'Run Experiment' to gather ethical reasoning samples.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Results Stream</h2>
+    <div id="results-area">
+        {% for ctx in recent_run_contexts %}
+        {% include "partials/result_item.html" %}
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Template for list items (can be used if we move to fragment rendering) -->
+<template id="result-template">
+    <!-- Client side rendering fallback or future hx-swap-oob -->
+</template>
+
+{% endblock %}

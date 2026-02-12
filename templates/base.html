@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title | default("AI Ethics Comparator") }}</title>
+
+    <!-- Factories (System Fonts) -->
+    <!-- Removed external Google Fonts to reduce supply-chain risk -->
+
+    <!-- HTMX (Locally Vendored) -->
+    <script src="/static/vendor/htmx/htmx.min.js"></script>
+    <script src="/static/vendor/htmx/json-enc.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/css/style.css" />
+
+    {% block head %}{% endblock %}
+  </head>
+
+  <body>
+    <header>
+      <div class="container">
+        <h1>AI Ethics Comparator</h1>
+        <p style="color: var(--accent-primary)">
+          Arsenal Strategy Implementation
+        </p>
+      </div>
+    </header>
+
+    <main class="container">{% block content %}{% endblock %}</main>
+
+    <footer
+      class="container"
+      style="
+        text-align: center;
+        margin-top: 4rem;
+        opacity: 0.5;
+        font-size: 0.8rem;
+      "
+    >
+      <p>Powered by Python, FastAPI & HTMX</p>
+    </footer>
+
+    <!-- Global Interactions -->
+    <script>
+      document.addEventListener("click", function (e) {
+        // Accordion Handler (Delegated for HTMX content)
+        if (e.target.closest(".accordion-header")) {
+          const accordion = e.target.closest(".accordion");
+          if (accordion) {
+            accordion.classList.toggle("open");
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

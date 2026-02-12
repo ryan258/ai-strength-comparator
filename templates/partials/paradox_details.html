@@ -1,0 +1,16 @@
+<div class="paradox-details fade-in">
+    <h3>{{ paradox.title }}</h3>
+    <div class="paradox-scenario">
+        <strong>The Scenario:</strong><br>
+        {{ scenario_text }}
+    </div>
+
+    <div class="paradox-options">
+        {% for option in paradox.options %}
+        <div class="paradox-option option-{{ option.id }}">
+            <strong>{{ option.label }}</strong>
+            <p>{{ option.description }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>

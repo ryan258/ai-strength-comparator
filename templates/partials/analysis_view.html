@@ -1,0 +1,172 @@
+<div class="analysis-content">
+  <div class="analysis-meta">
+    <div class="analysis-meta-row">
+      <span
+        >Analysis by <strong>{{ model }}</strong> {% if cached %}(Cached){%
+        endif %}</span
+      >
+
+      {% if run_id %}
+      <button
+        class="btn btn-sm analysis-regen-btn"
+        hx-post="/api/runs/{{ run_id }}/analyze?regenerate=true"
+        hx-target="#analysis-content-{{ run_id }}"
+        hx-indicator="#regen-loading-{{ run_id }}"
+      >
+        ↻ Regenerate
+      </button>
+      {% endif %}
+    </div>
+    <div
+      id="regen-loading-{{ run_id }}"
+      class="htmx-indicator analysis-regen-loading"
+    >
+      Regenerating...
+    </div>
+  </div>
+
+
+
+  {% if run_data and run_data.systemPrompt %}
+  <div class="system-persona-banner">
+    <h3 class="system-persona-title">System Persona Active</h3>
+    <div class="system-persona-body">
+      {{ run_data.systemPrompt }}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ... (rest of dashboard) ... -->
+  
+  {% if insight.legacy_text %}
+  <!-- Legacy Markdown View -->
+  <div class="markdown-body">{{ insight.legacy_text | markdown }}</div>
+  {% else %}
+  <!-- New Video Game Dashboard View -->
+  <div class="analysis-dashboard">
+    <!-- ... (cols) ... -->
+    <!-- Col 1: Key Insights -->
+    <div class="dashboard-col">
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Key Insights</h4>
+        <ul class="insights-list">
+          {% for point in insight.key_insights %}
+          <li>{{ point }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <!-- Col 2: Framework & Stats -->
+    <div class="dashboard-col">
+      <div class="dashboard-card">
+        <h4>Dominant Framework</h4>
+        <div class="dominant-framework">{{ insight.dominant_framework }}</div>
+      </div>
+
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Moral Complexes</h4>
+        <div class="moral-complex-list">
+          {% if insight.moral_complexes %} {% for complex in
+          insight.moral_complexes %} {% if complex.justification %}
+          <details class="moral-complex-detail">
+            <summary class="moral-complex-summary">
+              <span>{{ complex.label }}</span>
+              <span class="moral-complex-count">{{ complex.count }}</span>
+            </summary>
+            <div class="moral-complex-justification">
+              {{ complex.justification }}
+            </div>
+          </details>
+          {% else %}
+          <!-- Legacy View -->
+          <div class="stat-counter">
+            <span class="stat-label">{{ complex.label }}</span>
+            <span class="stat-value">{{ complex.count }}</span>
+          </div>
+          {% endif %} {% endfor %} {% else %}
+          <div class="moral-complex-empty">No moral complexes</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Col 3: Justifications & Consistency -->
+    <div class="dashboard-col">
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Pattern Recognition</h4>
+        <ul class="insights-list insights-list-spaced">
+          {% for item in insight.justifications %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Consistency Check</h4>
+        {% if insight.consistency is string %}
+        <div class="consistency-text">
+          {{ insight.consistency }}
+        </div>
+        {% else %}
+        <ul class="insights-list consistency-list">
+          {% for item in insight.consistency %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- N-Way Distribution Visualization (Trolley-type only) -->
+  {% if run_data.paradoxType == 'trolley' and run_data.summary and run_data.summary.options %}
+  <div class="dashboard-card distribution-card">
+    <h4>Decision Distribution</h4>
+    <div class="distribution-list">
+      {% for opt_stat in run_data.summary.options %} 
+      {% set opt_meta = run_data.options | selectattr("id", "equalto", opt_stat.id) | first | default({}) %} 
+      {% set bar_width = "%.1f"|format(opt_stat.percentage) %} 
+      {% set bar_color = "var(--option-" + opt_stat.id|string + ")" %}
+      <div class="distribution-item">
+        <div class="distribution-row">
+          <span class="distribution-option-label">{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</span>
+          <span class="distribution-option-count">{{ opt_stat.count }} ({{ bar_width }}%)</span>
+        </div>
+        <div class="distribution-bar-track">
+          {% set bar_style = 'width: ' ~ bar_width ~ '%; background: ' ~ bar_color ~ ';' %}
+          <div class="distribution-bar-fill" style="{{ bar_style }}"></div>
+        </div>
+      </div>
+      {% endfor %} 
+      {% if run_data.summary.undecided and run_data.summary.undecided.count > 0 %} 
+      {% set undecided_width = "%.1f"|format(run_data.summary.undecided.percentage) %}
+      <div class="distribution-item">
+        <div class="distribution-row">
+          <span class="distribution-undecided-label">Undecided</span>
+          <span class="distribution-undecided-count">{{ run_data.summary.undecided.count }} ({{ undecided_width }}%)</span>
+        </div>
+        <div class="distribution-bar-track">
+           {% set undecided_style = 'width: ' ~ undecided_width ~ '%;' %}
+          <div class="distribution-bar-fill distribution-bar-undecided" style="{{ undecided_style }}"></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Raw Data Accordion (Simplified) -->
+  <details class="analysis-json-details">
+    <summary class="analysis-json-summary">
+      View Analysis JSON
+    </summary>
+    <div class="analysis-json-content">
+      {% if insight %}
+      <pre class="analysis-json-pre"><code>{{ insight | tojson(indent=2) }}</code></pre>
+      {% else %}
+      <p class="analysis-json-empty">No insight data available.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+</div>

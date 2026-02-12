@@ -1,0 +1,36 @@
+<div class="analysis-content">
+  <div class="dashboard-card" style="border-color: var(--accent-danger); color: var(--accent-danger); text-align: center; padding: 2rem;">
+    <h3 style="margin-bottom: 1rem; border-color: var(--accent-danger);">analysis failed</h3>
+    <p style="opacity: 0.8; margin-bottom: 1.5rem;">{{ error_message }}</p>
+    <div style="font-size: 0.8rem; opacity: 0.6; margin-bottom: 1.5rem;">
+      The Analyst Model ({{ model }}) encountered an error.<br />
+      Try switching to a different model or check your API limits.
+    </div>
+
+    <div class="analysis-input-group" style="margin-bottom: 0;">
+      <label for="retry-model-{{ run_id }}" class="analysis-input-label" style="color: var(--text-color);">Try Another Model:</label>
+      <input
+        type="text"
+        name="analyst_model"
+        id="retry-model-{{ run_id }}"
+        value="{{ model }}"
+        class="analysis-input-field"
+        style="border-color: var(--accent-danger);"
+      />
+    </div>
+
+    <button
+      class="btn btn-primary"
+      hx-post="/api/runs/{{ run_id }}/analyze"
+      hx-include="#retry-model-{{ run_id }}"
+      hx-target="#analysis-content-{{ run_id }}"
+      hx-swap="innerHTML"
+      hx-indicator="#retry-loading-{{ run_id }}"
+    >
+      Retry Analysis
+    </button>
+    <div id="retry-loading-{{ run_id }}" class="htmx-indicator" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-color);">
+      Retrying...
+    </div>
+  </div>
+</div>

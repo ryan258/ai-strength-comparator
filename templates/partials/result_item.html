@@ -1,0 +1,158 @@
+<div class="result-item">
+  <div class="result-header">
+    <h3>{{ ctx.model_name }}</h3>
+    <span class="result-subtitle">{{ ctx.paradox_title }}</span>
+    {% if ctx.system_prompt %}
+    <div style="font-size: 0.8rem; color: var(--accent-primary); margin-top: 0.25rem; font-style: italic; opacity: 0.9;">
+        <span style="font-weight: bold; opacity: 0.7;">System Persona:</span> "{{ ctx.system_prompt }}"
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="result-body">
+    <div class="scenario-box">
+      <h4 class="scenario-title">The Scenario</h4>
+      <div class="markdown-body">{{ ctx.scenario_html }}</div>
+    </div>
+
+    {% if ctx.paradox_type == 'trolley' %}
+    <div class="result-stats-compact">
+      {% for opt in ctx.options_summary %}
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ opt.count }} ({{ "%.1f"|format(opt.percentage) }}%)</span>
+        <span class="result-stats-label" title="{{ opt.description }}">
+          <strong>{{ opt.label }}:</strong> {{ opt.description[:60] }}{% if opt.description|length > 60 %}...{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+      {% if ctx.undecided_count > 0 %}
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ ctx.undecided_count }} ({{ "%.1f"|format(ctx.undecided_percentage) }}%)</span>
+        <span class="result-stats-label">
+          <strong>Undecided</strong>
+        </span>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- N-Way Stacked Progress Bar -->
+    <div class="progress-bar-stacked">
+      {% for opt in ctx.options_summary %}
+      <div class="progress-segment option-{{ opt.id }}"
+           style="width: {{ opt.percentage }}%;"
+           title="{{ opt.label }}: {{ "%.1f"|format(opt.percentage) }}%">
+      </div>
+      {% endfor %}
+      {% if ctx.undecided_count > 0 %}
+      <div class="progress-segment undecided"
+           style="width: {{ ctx.undecided_percentage }}%;"
+           title="Undecided: {{ "%.1f"|format(ctx.undecided_percentage) }}%">
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="result-id">Run ID: {{ ctx.run_id }}</div>
+  </div>
+
+  <div class="result-actions">
+    <button
+      class="btn btn-primary btn-sm"
+      onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()"
+    >
+      View Analysis
+    </button>
+    <a
+      href="/api/runs/{{ ctx.run_id }}/pdf"
+      class="btn btn-sm"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="
+        text-decoration: none;
+        margin-left: 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      📄 PDF
+    </a>
+  </div>
+
+  <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
+    <div class="modal-header">
+      <h2>Ethical Analysis</h2>
+      <button
+        class="btn btn-sm"
+        onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()"
+      >
+        ✕
+      </button>
+    </div>
+
+    <!-- Analysis Container (Loads via HTMX on modal open) -->
+    <div id="analysis-content-{{ ctx.run_id }}">
+      {% if ctx.has_insight %}
+      <div class="empty-state">
+        <p class="empty-state-text">Analysis is cached.</p>
+        <button
+          class="btn btn-primary"
+          hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+          hx-target="#analysis-content-{{ ctx.run_id }}"
+          hx-swap="innerHTML"
+          hx-indicator="#loading-cached-{{ ctx.run_id }}"
+        >
+          View Analysis
+        </button>
+        <div id="loading-cached-{{ ctx.run_id }}" class="htmx-indicator" style="margin-top:0.5rem">Loading...</div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <p class="empty-state-text">No analysis generated yet.</p>
+
+        <div class="analysis-input-group">
+          <label
+            for="analystModel-{{ ctx.run_id }}"
+            class="analysis-input-label"
+            >Analyst Model</label
+          >
+          <input
+            type="text"
+            name="analyst_model"
+            id="analystModel-{{ ctx.run_id }}"
+            value="{{ ctx.config_analyst_model }}"
+            placeholder="e.g. provider/model-name"
+            class="analysis-input-field"
+          />
+          <div class="analysis-input-help">
+            Override the default analyst model if desired.
+          </div>
+        </div>
+
+        <button
+          class="btn btn-primary"
+          hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+          hx-include="#analystModel-{{ ctx.run_id }}"
+          hx-target="#analysis-content-{{ ctx.run_id }}"
+          hx-swap="innerHTML"
+          hx-indicator="#loading-{{ ctx.run_id }}"
+        >
+          ✨ Generate Ethical Analysis
+        </button>
+        <div
+          id="loading-{{ ctx.run_id }}"
+          class="htmx-indicator manual-analyze-btn"
+        >
+          Analyzing...
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="modal-footer-container">
+      <details>
+        <summary class="summary-toggle">View Run JSON</summary>
+        <div class="json-dump">{{ ctx.run_data_json }}</div>
+      </details>
+    </div>
+  </dialog>
+</div>
