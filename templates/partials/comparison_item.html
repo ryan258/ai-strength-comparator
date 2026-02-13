@@ -1,0 +1,129 @@
+<div class="result-item profile-item">
+  {% set aggregate_content_id = insight_content_id if insight_content_id is defined else "aggregate-analysis-content-comparison" %}
+  <div class="result-header">
+    <div>
+      <h3>Model Comparison</h3>
+      <span class="result-subtitle">
+        {{ comparison.modelsCompared }} model{% if comparison.modelsCompared != 1 %}s{% endif %}
+        • {{ comparison.testsPerModel }} test{% if comparison.testsPerModel != 1 %}s{% endif %} each
+        • {{ comparison.iterations }} iteration{% if comparison.iterations != 1 %}s{% endif %}
+      </span>
+      <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
+        Categories:
+        {% if comparison.categories %}
+          {{ comparison.categories | join(", ") }}
+        {% else %}
+          All
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="result-body">
+    <div class="analysis-dashboard" style="margin-top: 0;">
+      <div class="dashboard-col">
+        <div class="dashboard-card dashboard-card-grow">
+          <h4>Rankings</h4>
+          <ul class="insights-list">
+            {% for item in comparison.rankings %}
+            <li>
+              <strong>#{{ item.rank }} {{ item.modelName }}</strong>
+              <div style="margin-top: 0.25rem; font-size: 0.85rem; opacity: 0.9;">
+                Adj {{ "%.2f"|format(item.adjustedScore) }}
+                • Raw {{ "%.2f"|format(item.profile.overallScore) }}
+                • Coverage {{ "%.0f"|format(item.coverage * 100) }}%
+                <span class="strength-badge strength-{{ item.profile.overallStrength|lower }}" style="margin-left: 0.5rem;">
+                  {{ item.profile.overallStrength }}
+                </span>
+                {% if item.partial %}
+                <span style="margin-left: 0.5rem; color: var(--accent-danger);">
+                  Partial ({{ item.errors | length }} failed)
+                </span>
+                {% endif %}
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="dashboard-col">
+        <div class="dashboard-card dashboard-card-grow">
+          <h4>Category Leaders</h4>
+          {% if comparison.categoryLeaders %}
+          <ul class="insights-list">
+            {% for leader in comparison.categoryLeaders %}
+            <li>
+              <strong>{{ leader.category }}</strong>:
+              {{ leader.modelName }}
+              ({{ "%.2f"|format(leader.averageScore) }})
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div style="opacity: 0.7;">No category leaders available.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="dashboard-col">
+        <div class="dashboard-card dashboard-card-grow">
+          <h4>Notes</h4>
+          <ul class="insights-list">
+            <li><strong>Adjusted score</strong> = Overall score × Coverage</li>
+            <li><strong>Coverage</strong> = Successful tests / Total tests</li>
+            <li>All successful runs are persisted under <strong>results/</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="result-actions">
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('analysis-{{ aggregate_content_id }}').showModal()">
+      Comparison Insights
+    </button>
+  </div>
+
+  <dialog id="analysis-{{ aggregate_content_id }}" class="analysis-modal">
+    <div class="modal-header">
+      <h2>Comparison Insights</h2>
+      <button class="btn btn-sm" onclick="document.getElementById('analysis-{{ aggregate_content_id }}').close()">Close</button>
+    </div>
+
+    <div id="{{ aggregate_content_id }}">
+      <div class="empty-state">
+        <p class="empty-state-text">No aggregate insight generated yet.</p>
+
+        <div class="analysis-input-group">
+          <label for="aggregate-analyst-{{ aggregate_content_id }}" class="analysis-input-label">Analyst Model</label>
+          <input
+            type="text"
+            name="analystModel"
+            id="aggregate-analyst-{{ aggregate_content_id }}"
+            value="{{ config_analyst_model }}"
+            placeholder="e.g. provider/model-name"
+            class="analysis-input-field"
+          />
+        </div>
+
+        <textarea hidden id="aggregate-payload-{{ aggregate_content_id }}" name="payload">{{ comparison | tojson }}</textarea>
+        <input hidden id="aggregate-target-{{ aggregate_content_id }}" name="targetType" value="comparison" />
+        <input hidden id="aggregate-content-id-{{ aggregate_content_id }}" name="contentId" value="{{ aggregate_content_id }}" />
+
+        <button
+          class="btn btn-primary"
+          hx-post="/api/insights"
+          hx-ext="json-enc"
+          hx-include="#aggregate-analyst-{{ aggregate_content_id }}, #aggregate-payload-{{ aggregate_content_id }}, #aggregate-target-{{ aggregate_content_id }}, #aggregate-content-id-{{ aggregate_content_id }}"
+          hx-target="#{{ aggregate_content_id }}"
+          hx-swap="innerHTML"
+          hx-indicator="#loading-aggregate-{{ aggregate_content_id }}"
+        >
+          Generate Comparison Insights
+        </button>
+        <div id="loading-aggregate-{{ aggregate_content_id }}" class="htmx-indicator manual-analyze-btn">Analyzing...</div>
+      </div>
+    </div>
+  </dialog>
+</div>

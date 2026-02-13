@@ -1,0 +1,67 @@
+<div class="analysis-content">
+  <div class="analysis-meta">
+    <div class="analysis-meta-row">
+      <span>Analysis by <strong>{{ model }}</strong> ({{ target_type }})</span>
+    </div>
+  </div>
+
+  {% if insight.legacy_text %}
+  <div class="markdown-body">{{ insight.legacy_text | markdown }}</div>
+  {% else %}
+  <div class="analysis-dashboard">
+    <div class="dashboard-col">
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Executive Summary</h4>
+        <p class="consistency-text">{{ insight.executive_summary }}</p>
+      </div>
+
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Strength Signals</h4>
+        <ul class="insights-list">
+          {% for item in insight.strengths %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="dashboard-col">
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Weakness Signals</h4>
+        <ul class="insights-list insights-list-spaced">
+          {% for item in insight.weaknesses %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Reliability</h4>
+        <ul class="insights-list consistency-list">
+          {% for item in insight.reliability %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="dashboard-col">
+      <div class="dashboard-card dashboard-card-grow">
+        <h4>Recommendations</h4>
+        <ul class="insights-list">
+          {% for item in insight.recommendations %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <details class="analysis-json-details">
+    <summary class="analysis-json-summary">View Analysis JSON</summary>
+    <div class="analysis-json-content">
+      <pre class="analysis-json-pre"><code>{{ insight | tojson(indent=2) }}</code></pre>
+    </div>
+  </details>
+  {% endif %}
+</div>

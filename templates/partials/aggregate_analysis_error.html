@@ -1,0 +1,41 @@
+<div class="analysis-content">
+  <div class="dashboard-card" style="border-color: var(--accent-danger); color: var(--accent-danger); text-align: center; padding: 2rem;">
+    <h3 style="margin-bottom: 1rem; border-color: var(--accent-danger);">analysis failed</h3>
+    <p style="opacity: 0.8; margin-bottom: 1.5rem;">{{ error_message }}</p>
+    <div style="font-size: 0.8rem; opacity: 0.6; margin-bottom: 1.5rem;">
+      The Analyst Model ({{ model }}) encountered an error.<br />
+      Try switching to a different model or check your API limits.
+    </div>
+
+    <div class="analysis-input-group" style="margin-bottom: 0;">
+      <label for="retry-aggregate-model-{{ content_id }}" class="analysis-input-label" style="color: var(--text-color);">Try Another Model:</label>
+      <input
+        type="text"
+        name="analystModel"
+        id="retry-aggregate-model-{{ content_id }}"
+        value="{{ model }}"
+        class="analysis-input-field"
+        style="border-color: var(--accent-danger);"
+      />
+    </div>
+
+    <textarea hidden id="retry-aggregate-payload-{{ content_id }}" name="payload">{{ payload | tojson }}</textarea>
+    <input hidden id="retry-aggregate-target-{{ content_id }}" name="targetType" value="{{ target_type }}" />
+    <input hidden id="retry-aggregate-content-{{ content_id }}" name="contentId" value="{{ content_id }}" />
+
+    <button
+      class="btn btn-primary"
+      hx-post="/api/insights"
+      hx-ext="json-enc"
+      hx-include="#retry-aggregate-model-{{ content_id }}, #retry-aggregate-payload-{{ content_id }}, #retry-aggregate-target-{{ content_id }}, #retry-aggregate-content-{{ content_id }}"
+      hx-target="#{{ content_id }}"
+      hx-swap="innerHTML"
+      hx-indicator="#retry-aggregate-loading-{{ content_id }}"
+    >
+      Retry Analysis
+    </button>
+    <div id="retry-aggregate-loading-{{ content_id }}" class="htmx-indicator" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-color);">
+      Retrying...
+    </div>
+  </div>
+</div>

@@ -1,4 +1,6 @@
 <div class="result-item profile-item">
+  {% set aggregate_content_id = insight_content_id if insight_content_id is defined else "aggregate-analysis-content-profile" %}
+  {% set aggregate_payload = insight_payload if insight_payload is defined else profile %}
   <div class="result-header">
     <h3>{{ profile.modelName }} Strength Profile</h3>
     <span class="strength-badge strength-{{ profile.overallStrength|lower }}">
@@ -79,4 +81,52 @@
       </div>
     </div>
   </div>
+
+  <div class="result-actions">
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('analysis-{{ aggregate_content_id }}').showModal()">
+      Profile Insights
+    </button>
+  </div>
+
+  <dialog id="analysis-{{ aggregate_content_id }}" class="analysis-modal">
+    <div class="modal-header">
+      <h2>Profile Insights</h2>
+      <button class="btn btn-sm" onclick="document.getElementById('analysis-{{ aggregate_content_id }}').close()">Close</button>
+    </div>
+
+    <div id="{{ aggregate_content_id }}">
+      <div class="empty-state">
+        <p class="empty-state-text">No aggregate insight generated yet.</p>
+
+        <div class="analysis-input-group">
+          <label for="aggregate-analyst-{{ aggregate_content_id }}" class="analysis-input-label">Analyst Model</label>
+          <input
+            type="text"
+            name="analystModel"
+            id="aggregate-analyst-{{ aggregate_content_id }}"
+            value="{{ config_analyst_model }}"
+            placeholder="e.g. provider/model-name"
+            class="analysis-input-field"
+          />
+        </div>
+
+        <textarea hidden id="aggregate-payload-{{ aggregate_content_id }}" name="payload">{{ aggregate_payload | tojson }}</textarea>
+        <input hidden id="aggregate-target-{{ aggregate_content_id }}" name="targetType" value="profile" />
+        <input hidden id="aggregate-content-id-{{ aggregate_content_id }}" name="contentId" value="{{ aggregate_content_id }}" />
+
+        <button
+          class="btn btn-primary"
+          hx-post="/api/insights"
+          hx-ext="json-enc"
+          hx-include="#aggregate-analyst-{{ aggregate_content_id }}, #aggregate-payload-{{ aggregate_content_id }}, #aggregate-target-{{ aggregate_content_id }}, #aggregate-content-id-{{ aggregate_content_id }}"
+          hx-target="#{{ aggregate_content_id }}"
+          hx-swap="innerHTML"
+          hx-indicator="#loading-aggregate-{{ aggregate_content_id }}"
+        >
+          Generate Profile Insights
+        </button>
+        <div id="loading-aggregate-{{ aggregate_content_id }}" class="htmx-indicator manual-analyze-btn">Analyzing...</div>
+      </div>
+    </div>
+  </dialog>
 </div>

@@ -114,6 +114,16 @@ To benchmark a model across an entire category of capability tests:
 
 The profile aggregates scores across all matching capability tests and surfaces the model's strongest and weakest areas.
 
+### Cross-Model Comparison
+
+To rank all configured models on the same capability slice:
+
+1. Select category filters (or leave blank for all).
+2. Set iterations per capability.
+3. Trigger comparison via `POST /api/compare` (or the `Compare All Models` UI button).
+
+The response includes model rankings, adjusted scores (coverage-aware), and per-category leaders.
+
 ## 6. Reading Results
 
 Each run card displays:
@@ -151,6 +161,16 @@ Structured analysis output includes:
 - `recommendations`: list of suggested next steps
 
 Insight outputs are stored in the run's `insights[]` array.
+
+### Aggregate Insights (Profile/Comparison)
+
+Profile and comparison cards support aggregate insight synthesis through `POST /api/insights`.
+
+- `targetType`: `profile` or `comparison`
+- `payload`: corresponding profile/comparison JSON object
+- optional `analystModel`: override default analyst model
+
+The output schema matches run-level analysis (`executive_summary`, `strengths`, `weaknesses`, `reliability`, `recommendations`).
 
 ## 8. Run IDs and Migration
 
@@ -198,6 +218,8 @@ Every run record (`results/<run_id>.json`) includes:
 - `GET /api/fragments/capability-details?capabilityId=...`
 - `POST /api/query` - execute a single capability run
 - `POST /api/profile` - execute a strength profile across capabilities
+- `POST /api/compare` - execute a cross-model comparison
+- `POST /api/insights` - generate aggregate profile/comparison insight synthesis
 - `GET /api/runs`
 - `GET /api/runs/{run_id}`
 - `POST /api/runs/{run_id}/analyze`

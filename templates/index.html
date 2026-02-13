@@ -37,22 +37,18 @@
 
             <div class="form-group">
                 <label for="modelName">AI Model (OpenRouter ID)</label>
-                <input
-                    type="text"
-                    name="modelName"
-                    id="modelName"
-                    list="model-suggestions"
-                    value="{{ default_model or '' }}"
-                    placeholder="e.g. provider/model-name"
-                    required
-                >
-                <datalist id="model-suggestions">
+                <select name="modelName" id="modelName" required>
+                    {% if not models %}
+                    <option value="" selected disabled>No models configured</option>
+                    {% endif %}
                     {% for model in models %}
-                    <option value="{{ model.id }}">{{ model.name }}</option>
+                    <option value="{{ model.id }}" {% if model.id == default_model %}selected{% endif %}>
+                        {{ model.name }} ({{ model.id }})
+                    </option>
                     {% endfor %}
-                </datalist>
+                </select>
                 <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
-                    Select a preset or enter any OpenRouter model ID.
+                    Select from configured models in models.json.
                 </div>
             </div>
 
@@ -113,6 +109,18 @@
                     hx-indicator="#loading"
                 >
                     Run Full Strength Profile
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    hx-post="/api/compare"
+                    hx-ext="json-enc"
+                    hx-include="#benchmark-form"
+                    hx-target="#results-area"
+                    hx-swap="afterbegin"
+                    hx-indicator="#loading"
+                >
+                    Compare All Models
                 </button>
             </div>
         </form>

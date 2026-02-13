@@ -105,7 +105,9 @@ pytest
 
 - `Run Selected Test`: execute one capability test repeatedly
 - `Run Full Strength Profile`: run all capability tests (or filtered categories)
+- `Compare All Models`: run selected capability set across all configured models and rank them
 - `View Analysis`: generate model-level strengths/weaknesses commentary
+- `Profile/Comparison Insights`: generate aggregate analyst synthesis for profiles and comparisons
 - `PDF Export`: download run report
 
 ## API Endpoints
@@ -115,6 +117,8 @@ pytest
 - `GET /api/capabilities` - list capability tests (canonical)
 - `POST /api/query` - execute one capability test run
 - `POST /api/profile` - execute full/filtered multi-capability profile
+- `POST /api/compare` - execute cross-model comparison over selected capabilities
+- `POST /api/insights` - generate aggregate insights for `profile` or `comparison` payloads
 - `GET /api/runs` - list stored runs
 - `GET /api/runs/{run_id}` - fetch run data
 - `POST /api/runs/{run_id}/analyze` - generate strength/weakness analysis
