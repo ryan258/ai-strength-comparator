@@ -1,0 +1,82 @@
+<div class="result-item profile-item">
+  <div class="result-header">
+    <h3>{{ profile.modelName }} Strength Profile</h3>
+    <span class="strength-badge strength-{{ profile.overallStrength|lower }}">
+      {{ profile.overallStrength }}
+    </span>
+  </div>
+
+  <div class="result-body">
+    {% if partial and errors %}
+    <div class="dashboard-card" style="border-color: var(--accent-danger); margin-bottom: 1rem;">
+      <h4 style="color: var(--accent-danger); border-color: var(--accent-danger);">Partial Results</h4>
+      <p style="margin-bottom: 0.5rem;">
+        {{ errors|length }} capability run{% if errors|length != 1 %}s{% endif %} failed. Profile computed from successful runs.
+      </p>
+      <ul class="insights-list">
+        {% for error in errors %}
+        <li>
+          <strong>{{ error.capabilityId }}</strong> ({{ error.errorType }}): {{ error.message }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    <div class="result-stats-compact">
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ "%.2f"|format(profile.overallScore) }}</span>
+        <span class="result-stats-label"><strong>Overall Score</strong></span>
+      </div>
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ profile.tests|length }}</span>
+        <span class="result-stats-label"><strong>Capability Tests Run</strong></span>
+      </div>
+    </div>
+
+    <div class="analysis-dashboard" style="margin-top: 1rem;">
+      <div class="dashboard-col">
+        <div class="dashboard-card dashboard-card-grow">
+          <h4>Strongest Areas</h4>
+          <ul class="insights-list">
+            {% for item in profile.strongestAreas %}
+            <li>
+              <strong>{{ item.title }}</strong>
+              ({{ "%.2f"|format(item.averageScore) }})
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="dashboard-col">
+        <div class="dashboard-card dashboard-card-grow">
+          <h4>Weakest Areas</h4>
+          <ul class="insights-list">
+            {% for item in profile.weakestAreas %}
+            <li>
+              <strong>{{ item.title }}</strong>
+              ({{ "%.2f"|format(item.averageScore) }})
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="dashboard-col">
+        <div class="dashboard-card dashboard-card-grow">
+          <h4>Category Breakdown</h4>
+          <ul class="insights-list">
+            {% for item in profile.categoryBreakdown %}
+            <li>
+              <strong>{{ item.category }}</strong>:
+              {{ "%.2f"|format(item.averageScore) }}
+              ({{ item.strength }})
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

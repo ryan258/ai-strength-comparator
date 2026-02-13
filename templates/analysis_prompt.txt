@@ -1,31 +1,21 @@
-You are an expert AI researcher analyzing ethical reasoning.
-Analyze this data from an AI model's paradox run.
+You are an AI benchmark analyst. Analyze this model run and identify what the model is good at and where it struggles.
 
-Return your analysis in strictly valid JSON format. Do not use Markdown code blocks.
-The JSON must follow this schema:
+Return strictly valid JSON. Do not use Markdown code blocks.
+Use this exact schema:
 
 {
-  "dominant_framework": "string (e.g. Utilitarian, Deontological)",
-  "moral_complexes": [
-    { 
-      "label": "Duty", 
-      "count": 3,
-      "justification": "Brief explanation of why this score was assigned based on the run data."
-    },
-    ... (Use allowed labels: Duty, Consequence, Purity, Authority, Compassion, Risk-aversion, Legalism)
+  "executive_summary": "One concise paragraph summarizing overall performance.",
+  "strengths": [
+    "2-6 bullet points describing strong capability signals."
   ],
-  "justifications": [
-    "Pattern 1 (Reasoning style observed)",
-    "... (Provide 2 to 5 clear bullet points summarizing patterns)"
+  "weaknesses": [
+    "2-6 bullet points describing weak capability signals or failure modes."
   ],
-  "consistency": [
-    "Observation 1 (Contradiction between A and B)",
-    "... (Provide 2 to 5 clear observations on consistency)"
+  "reliability": [
+    "2-6 observations about consistency, variance, and confidence in conclusions."
   ],
-  "key_insights": [
-    "Insight 1 (Deep observation about the model's reasoning)",
-    "Insight 2 (Specific pattern or contradiction found)",
-    "... (Provide 2 to 10 insights. Quality over quantity. No fluff.)"
+  "recommendations": [
+    "2-6 actionable next tests or prompt/config changes."
   ]
 }
 

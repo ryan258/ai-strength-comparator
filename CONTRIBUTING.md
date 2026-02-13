@@ -7,7 +7,7 @@ This project is intentionally small. Keep changes minimal, typed, and synchroniz
 - Backend: FastAPI + Python
 - UI: Jinja2 + HTMX
 - Storage: local JSON files
-- Scenario processing: trolley-only
+- Scenario processing: capability-only
 
 ## Documentation Source of Truth
 
@@ -15,7 +15,7 @@ This project is intentionally small. Keep changes minimal, typed, and synchroniz
 - Contributor/agent implementation guide: `CLAUDE.md`
 - User-facing workflow guide: `HANDBOOK.md`
 - Active roadmap and near-term milestones: `ROADMAP.md`
-- Dataset/schema summary: `paradoxes.md`
+- Dataset/schema summary: `capabilities.json` + `README.md` benchmark section
 - Historical snapshots (not source of truth): `n-plan.md`, `smells.md`
 
 ## Required Doc Sync Rules
@@ -30,8 +30,8 @@ Update docs in the same PR when changing any of the following:
   - update `ROADMAP.md` if this changes planned follow-up work
 - UI workflow or visible controls:
   - update `HANDBOOK.md`
-- Paradox schema/count/type assumptions:
-  - update `paradoxes.md`
+- Capability schema/count/type assumptions:
+  - update `README.md` benchmark section and any affected tests
 - Project direction or engineering priorities:
   - update `ROADMAP.md`
 

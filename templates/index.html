@@ -2,51 +2,75 @@
 
 {% block content %}
 <div class="controls-grid">
-    <!-- Configuration Card -->
     <div class="card">
-        <h2>Configuration</h2>
-        <form hx-post="/api/query" hx-trigger="submit" hx-target="#results-area" hx-swap="afterbegin" hx-ext="json-enc"
+        <h2>Benchmark Configuration</h2>
+        <form
+            id="benchmark-form"
+            hx-post="/api/query"
+            hx-trigger="submit"
+            hx-target="#results-area"
+            hx-swap="afterbegin"
+            hx-ext="json-enc"
             hx-indicator="#loading"
             hx-on::before-request="document.getElementById('status-container').style.display='none'"
-            hx-on::after-request="document.getElementById('status-container').style.display='block'">
+            hx-on::after-request="document.getElementById('status-container').style.display='block'"
+        >
 
             <div class="form-group">
-                <label for="paradoxId">Paradox Scenario</label>
-                <select name="paradoxId" id="paradoxId" required hx-get="/api/fragments/paradox-details"
-                    hx-target="#status-container" hx-trigger="change" hx-swap="innerHTML">
-                    {% for paradox in paradoxes %}
-                    <option value="{{ paradox.id }}" {% if initial_paradox and paradox.id == initial_paradox.id %}selected{% endif %}>{{ paradox.title }}</option>
+                <label for="capabilityId">Capability Test</label>
+                <select
+                    name="capabilityId"
+                    id="capabilityId"
+                    required
+                    hx-get="/api/fragments/capability-details"
+                    hx-target="#status-container"
+                    hx-trigger="change"
+                    hx-swap="innerHTML"
+                >
+                    {% for capability in capabilities %}
+                    <option value="{{ capability.id }}" {% if initial_capability and capability.id == initial_capability.id %}selected{% endif %}>
+                        {{ capability.title }}{% if capability.category %} ({{ capability.category }}){% endif %}
+                    </option>
                     {% endfor %}
                 </select>
             </div>
 
-            <!-- Model Selection (Free Text + Datalist) -->
             <div class="form-group">
                 <label for="modelName">AI Model (OpenRouter ID)</label>
-                <input type="text" name="modelName" id="modelName" list="model-suggestions"
-                    value="{{ default_model or '' }}" placeholder="e.g. provider/model-name" required>
+                <input
+                    type="text"
+                    name="modelName"
+                    id="modelName"
+                    list="model-suggestions"
+                    value="{{ default_model or '' }}"
+                    placeholder="e.g. provider/model-name"
+                    required
+                >
                 <datalist id="model-suggestions">
                     {% for model in models %}
                     <option value="{{ model.id }}">{{ model.name }}</option>
                     {% endfor %}
                 </datalist>
                 <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
-                    Select a preset or type ANY OpenRouter model ID.
+                    Select a preset or enter any OpenRouter model ID.
                 </div>
             </div>
 
-            <!-- System Instructions (Persona) -->
             <div class="form-group">
                 <details>
                     <summary style="cursor: pointer; font-size: 0.9rem; color: var(--accent-primary); margin-bottom: 0.5rem;">
-                        Persona (Prepended) <span style="font-size: 0.7rem;">▼</span>
+                        Optional Persona
                     </summary>
                     <div style="margin-top: 0.5rem;">
-                        <textarea name="systemPrompt" id="systemPrompt" rows="3" 
-                            placeholder="e.g. You are a strict utilitarian. Minimize suffering at all costs."
-                            style="width: 100%; font-family: monospace; font-size: 0.85rem; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;"></textarea>
+                        <textarea
+                            name="systemPrompt"
+                            id="systemPrompt"
+                            rows="3"
+                            placeholder="e.g. You are concise, precise, and never speculate without evidence."
+                            style="width: 100%; font-family: monospace; font-size: 0.85rem; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;"
+                        ></textarea>
                         <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem;">
-                            Prepends this text directly to the user prompt (stronger adherence).
+                            Prepended to prompts for controlled behavior testing.
                         </div>
                     </div>
                 </details>
@@ -54,33 +78,61 @@
 
             <div class="form-group">
                 <label for="iterations">Iterations</label>
-                <input type="number" name="iterations" id="iterations" value="5" min="1" max="{{ max_iterations }}">
+                <input type="number" name="iterations" id="iterations" value="3" min="1" max="{{ max_iterations }}">
             </div>
 
-            <button type="submit" class="btn btn-primary" hx-disabled-elt="this">Run Experiment</button>
+            <div class="form-group">
+                <label for="categories">Profile Categories (optional)</label>
+                <input
+                    type="text"
+                    name="categories"
+                    id="categories"
+                    list="category-suggestions"
+                    placeholder="reasoning, coding, safety"
+                >
+                <datalist id="category-suggestions">
+                    {% for category in capability_categories %}
+                    <option value="{{ category }}"></option>
+                    {% endfor %}
+                </datalist>
+                <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem;">
+                    Comma-separated values. Leave blank to run all capability categories.
+                </div>
+            </div>
+
+            <div class="action-row">
+                <button type="submit" class="btn btn-primary" hx-disabled-elt="this">Run Selected Test</button>
+                <button
+                    type="button"
+                    class="btn"
+                    hx-post="/api/profile"
+                    hx-ext="json-enc"
+                    hx-include="#benchmark-form"
+                    hx-target="#results-area"
+                    hx-swap="afterbegin"
+                    hx-indicator="#loading"
+                >
+                    Run Full Strength Profile
+                </button>
+            </div>
         </form>
     </div>
 
-    <!-- Status/Info Card -->
-    <!-- Status/Info Card -->
     <div class="card">
-        <h2>System Status</h2>
+        <h2>Status</h2>
         <div id="loading" class="htmx-indicator">
-            Running simulation... <span class="status-badge"
-                style="color: var(--bg-color); background: var(--accent-primary);">BUSY</span>
+            Running benchmark... <span class="status-badge" style="color: var(--bg-color); background: var(--accent-primary);">BUSY</span>
         </div>
 
         <div id="status-container">
-            {% if initial_paradox %}
-                {% with paradox=initial_paradox, scenario_text=initial_scenario_text %}
-                    {% include "partials/paradox_details.html" %}
+            {% if initial_capability %}
+                {% with capability=initial_capability, capability_text=initial_capability_text %}
+                    {% include "partials/capability_details.html" %}
                 {% endwith %}
             {% else %}
-                <div id="status-message">
-                    Ready to process.
-                </div>
+                <div id="status-message">Ready to benchmark.</div>
                 <div style="margin-top: 1rem; font-size: 0.9rem; opacity: 0.7;">
-                    Select a paradox and click 'Run Experiment' to gather ethical reasoning samples.
+                    Choose a test and run it, or launch a full profile to map strengths and weaknesses.
                 </div>
             {% endif %}
         </div>
@@ -96,9 +148,5 @@
     </div>
 </div>
 
-<!-- Template for list items (can be used if we move to fragment rendering) -->
-<template id="result-template">
-    <!-- Client side rendering fallback or future hx-swap-oob -->
-</template>
-
+<template id="result-template"></template>
 {% endblock %}

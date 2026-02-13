@@ -1,26 +1,68 @@
 """
 Analysis Module - Arsenal Module
-Handles generation of ethical insights from run data.
+Generates model strength/weakness insights from run data.
 """
 
-from pathlib import Path
-from typing import Any, Dict, Optional
 import json
-from string import Template
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import logging
+from pathlib import Path
+from string import Template
+from typing import Any, Dict, Optional
+
+from lib.ai_service import AIService
 
 logger = logging.getLogger(__name__)
 
-from lib.ai_service import AIService
+
+def _extract_json_object(text: str) -> Optional[str]:
+    """Extract the first valid JSON object from mixed model output."""
+    decoder = json.JSONDecoder()
+    for start_idx, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            parsed, end_idx = decoder.raw_decode(text[start_idx:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return text[start_idx : start_idx + end_idx]
+    return None
+
+
+def _is_list_of_strings(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
+def _validate_analysis_content(content: Dict[str, Any]) -> None:
+    required_keys = [
+        "executive_summary",
+        "strengths",
+        "weaknesses",
+        "reliability",
+        "recommendations",
+    ]
+    missing_keys = [key for key in required_keys if key not in content]
+    if missing_keys:
+        raise ValueError(f"Analysis JSON missing keys: {missing_keys}")
+
+    executive_summary = content.get("executive_summary")
+    if not isinstance(executive_summary, str) or not executive_summary.strip():
+        raise ValueError("executive_summary must be a non-empty string")
+
+    for key in ("strengths", "weaknesses", "reliability", "recommendations"):
+        if not _is_list_of_strings(content.get(key)):
+            raise ValueError(f"{key} must be a list of strings")
+
 
 @dataclass
 class AnalysisConfig:
     run_data: Dict[str, Any]
     analyst_model: str
-    temperature: float = 0.5
-    max_tokens: int = 4096  # Increased to support detailed list outputs
+    temperature: float = 0.3
+    max_tokens: int = 4096
+
 
 class AnalysisEngine:
     def __init__(
@@ -34,134 +76,90 @@ class AnalysisEngine:
         )
 
     def compile_run_text(self, run_data: Dict[str, Any]) -> str:
-        """Compile run data into a text format for the analyst"""
-        paradox_type = run_data.get("paradoxType", "trolley")
-        if paradox_type != "trolley":
-            raise ValueError(f"Unsupported paradox type for analysis: {paradox_type}")
+        """Compile run data into a plain-text payload for analysis."""
+        capability_type = run_data.get("capabilityType", "unknown")
+
+        text = "Run Analysis Request\n====================\n\n"
+        text += f"Model: {run_data.get('modelName', 'Unknown')}\n"
+        text += f"Capability ID: {run_data.get('capabilityId', 'Unknown')}\n"
+        text += f"Capability Type: {capability_type}\n"
+        text += "\n--- RUN DATA START ---\n"
+
+        summary = run_data.get("summary", {})
+        if isinstance(summary, dict):
+            text += "\nSummary:\n"
+            for key, value in summary.items():
+                text += f"- {key}: {value}\n"
 
         responses = run_data.get("responses", [])
-        
-        text = f"Run Analysis Request\n====================\n\n"
-        text += f"Model: {run_data.get('modelName', 'Unknown')}\n"
-        text += f"Paradox: {run_data.get('paradoxId', 'Unknown')}\n"
-        text += "\n--- RUN DATA START ---\n"
-        
-        summary = run_data.get("summary", {})
-        text += f"\nSummary:\n"
+        if isinstance(responses, list):
+            text += "\nSample Responses:\n"
+            for index, response in enumerate(responses[:10]):
+                if not isinstance(response, dict):
+                    continue
+                score = response.get("score")
+                passed = response.get("passed")
+                raw = str(response.get("raw", "")).strip()
+                if len(raw) > 300:
+                    raw = f"{raw[:300]}..."
 
-        # Handle both N-way (options array) and legacy binary (group1/group2) schemas
-        if "options" in summary:
-            # N-way schema: options is a list of {id, count, percentage}
-            options_meta = run_data.get("options", [])
-            for opt_stat in summary["options"]:
-                opt_id = opt_stat.get("id", "?")
-                count = opt_stat.get("count", 0)
-                # Find label from options metadata
-                label = f"Option {opt_id}"
-                for opt_meta in options_meta:
-                    if opt_meta.get("id") == opt_id:
-                        label = opt_meta.get("label", label)
-                        break
-                text += f"- {label}: {count}\n"
-        else:
-            # Legacy binary schema: group1/group2 dicts
-            text += f"- Group 1: {summary.get('group1', {}).get('count', 0)}\n"
-            text += f"- Group 2: {summary.get('group2', {}).get('count', 0)}\n"
+                text += f"- Iteration {index + 1}:"
+                if score is not None:
+                    text += f" score={score}"
+                if passed is not None:
+                    text += f" passed={passed}"
+                text += f"\n  Response: {raw}\n"
 
-        # Include undecided count if present
-        undecided = summary.get("undecided", {})
-        if undecided.get("count", 0) > 0:
-            text += f"- Undecided: {undecided.get('count', 0)}\n"
-        
-        text += "\nIteration Explanations:\n"
-        for idx, response in enumerate(responses):
-            if not isinstance(response, dict):
-                logger.warning(f"Response {idx} is not a dict: {type(response)}")
-                continue
-            decision = response.get('decisionToken', 'N/A')
-            explanation = response.get('explanation', '')
-            text += f"Iteration {idx + 1} ({decision}): {explanation}\n"
-        
         text += "\n--- RUN DATA END ---\n"
         return text
 
     async def generate_insight(self, config: AnalysisConfig) -> Dict[str, Any]:
         """
-        Generate insight for a run
-        
+        Generate insight for a run.
+
         Returns:
-             Dict with keys: timestamp, analystModel, content
+            Dict with keys: timestamp, analystModel, content
         """
         compiled_text = self.compile_run_text(config.run_data)
-        
-        # Load prompt from template file
+
         try:
-            with open(self.prompt_template_path, "r", encoding="utf-8") as f:
-                meta_prompt = f.read()
-        except Exception as e:
-            logger.error("Failed to load analysis prompt template (%s): %s", self.prompt_template_path, e)
-            # Fallback (minimal)
-            meta_prompt = "Analyze this AI run:\n{data}"
-            
-        # Use string.Template for safer substitution (Code Review Fix #9)
+            with open(self.prompt_template_path, "r", encoding="utf-8") as prompt_file:
+                meta_prompt = prompt_file.read()
+        except Exception as error:
+            logger.error(
+                "Failed to load analysis prompt template (%s): %s",
+                self.prompt_template_path,
+                error,
+            )
+            meta_prompt = "Analyze this AI benchmark run:\n{data}"
+
         template = Template(meta_prompt)
         formatted_prompt = template.safe_substitute(data=compiled_text)
-        
+
         raw_content = await self.ai_service.get_model_response(
             config.analyst_model,
             formatted_prompt,
             "",
-            {"temperature": config.temperature, "max_tokens": config.max_tokens}
+            {"temperature": config.temperature, "max_tokens": config.max_tokens},
         )
 
-        # Try to parse as JSON (New Dashboard)
         try:
-            # Enhanced JSON extraction (balanced brace counting) suggested by review
-            def extract_json_object(text: str) -> Optional[str]:
-                """Extract first complete JSON object from text."""
-                brace_count = 0
-                start_idx = text.find('{')
-                if start_idx == -1: return None
-
-                for i, char in enumerate(text[start_idx:], start=start_idx):
-                    if char == '{': brace_count += 1
-                    elif char == '}': 
-                        brace_count -= 1
-                        if brace_count == 0: return text[start_idx:i+1]
-                return None
-
-            json_str = extract_json_object(raw_content)
-            
+            json_str = _extract_json_object(raw_content)
             if json_str:
                 parsed_content = json.loads(json_str)
             else:
-                # Try fallback cleaning
-                clean_content = raw_content.replace('```json', '').replace('```', '').strip()
+                clean_content = raw_content.replace("```json", "").replace("```", "").strip()
                 parsed_content = json.loads(clean_content)
+            if not isinstance(parsed_content, dict):
+                raise ValueError("analysis output must be a JSON object")
+            _validate_analysis_content(parsed_content)
 
-            # JSON Schema Validation (Critical Issue #3)
-            required_keys = ["dominant_framework", "moral_complexes", "justifications", "consistency", "key_insights"]
-            missing_keys = [k for k in required_keys if k not in parsed_content]
-            
-            if missing_keys:
-                logger.warning(f"JSON missing keys: {missing_keys}")
-                # Fall back to legacy if critical keys hidden, or keep partial?
-                # Review says "Invalid JSON structure causes errors", so fallback is safer
-                parsed_content = {"legacy_text": raw_content}
-            else:
-                 # Validate types
-                 if not isinstance(parsed_content.get("moral_complexes"), list):
-                     raise ValueError("moral_complexes must be list")
-                 if not isinstance(parsed_content.get("key_insights"), list):
-                     raise ValueError("key_insights must be list")
-
-        except (json.JSONDecodeError, AttributeError, ValueError) as e:
-            logger.warning(f"JSON parsing/validation failed: {e}")
-            # Fallback to legacy text format
+        except (json.JSONDecodeError, AttributeError, ValueError) as error:
+            logger.warning("Analysis JSON parsing/validation failed: %s", error)
             parsed_content = {"legacy_text": raw_content}
-        
+
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "analystModel": config.analyst_model,
-            "content": parsed_content
+            "content": parsed_content,
         }

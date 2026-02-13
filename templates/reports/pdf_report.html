@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>AI Ethics Report - {{ run.runId }}</title>
+    <title>AI Strength Report - {{ run.runId }}</title>
     <style>
       @page {
         size: A4;
@@ -14,31 +14,66 @@
         box-sizing: border-box;
       }
 
-      html {
+      html,
+      body {
         background-color: #121212;
       }
 
       body {
         font-family: "Helvetica", "Arial", sans-serif;
         line-height: 1.6;
-        color: #ebd2be; /* Warm Beige */
-        background-color: #121212 !important; /* Off-Black */
+        color: #ebd2be;
         font-size: 11pt;
         margin: 0;
         padding: 1.5cm;
       }
 
-      /* metadata table */
+      h1 {
+        font-size: 24pt;
+        border-bottom: 3px solid #a6accd;
+        padding-bottom: 12px;
+        margin-bottom: 28px;
+        color: #ebd2be;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      h2 {
+        font-size: 15pt;
+        color: #a6accd;
+        margin-top: 0;
+        margin-bottom: 16px;
+        border-bottom: 1px solid #a6accd;
+        padding-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      h3 {
+        font-size: 11pt;
+        color: #98c379;
+        margin-top: 0;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+      }
+
+      p,
+      li,
+      td,
+      div {
+        color: #ebd2be;
+      }
+
       .meta-table {
         width: 100%;
-        margin-bottom: 30px;
+        margin-bottom: 24px;
         border-collapse: collapse;
       }
 
       .meta-table td {
-        padding: 8px 0;
+        padding: 7px 0;
         border-bottom: 1px solid #a6accd;
-        color: #ebd2be;
       }
 
       .meta-table tr:last-child td {
@@ -48,146 +83,65 @@
       .meta-label {
         font-weight: bold;
         color: #a6accd;
-        width: 25%;
+        width: 28%;
         text-transform: uppercase;
         font-size: 9pt;
-        letter-spacing: 0.5px;
       }
 
-      /* typography */
-      h1 {
-        font-size: 26pt;
-        border-bottom: 3px solid #a6accd; /* Lavender */
-        padding-bottom: 15px;
-        margin-bottom: 35px;
-        color: #ebd2be;
-        text-transform: uppercase;
-        letter-spacing: 3px;
-        font-weight: 700;
-      }
-
-      h2 {
-        font-size: 16pt;
-        color: #a6accd; /* Lavender */
-        margin-top: 0;
-        margin-bottom: 20px;
-        border-bottom: 1px solid #a6accd;
-        padding-bottom: 10px;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        font-weight: 600;
-        page-break-after: avoid;
-      }
-
-      h3 {
-        font-size: 12pt;
-        color: #98c379; /* Green */
-        margin-top: 5px;
-        margin-bottom: 10px;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-
-      h4 {
-        font-size: 11pt;
-        color: #ebd2be;
-        margin-top: 15px;
-        margin-bottom: 8px;
-        font-weight: bold;
-        text-decoration: none;
-        border-left: 2px solid #e06c75; /* Red accent */
-        padding-left: 10px;
-      }
-
-      /* components */
-      .result-summary {
-        background: #121212;
-        padding: 30px;
-        border-radius: 4px; /* Sharper corners */
-        margin-bottom: 30px;
+      .card {
         border: 1px solid #a6accd;
         border-left: 6px solid #98c379;
-        page-break-inside: avoid;
+        border-radius: 4px;
+        padding: 20px;
+        margin-bottom: 20px;
       }
 
       .scenario-text {
         margin-top: 10px;
-        color: #ebd2be;
-        font-style: italic;
-        font-size: 12pt;
-        line-height: 1.8;
-        background: #121212;
-        padding: 15px;
-        border-radius: 4px;
         border: 1px solid #a6accd;
+        padding: 12px;
+        border-radius: 4px;
+        font-style: italic;
       }
 
-      /* Flexbox Stats Container */
-      .stats-container {
-        margin-top: 25px;
+      .stats-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 15px;
-        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
       }
 
       .stat-box {
-        background: #121212;
-        padding: 20px;
-        border-radius: 4px;
         border: 1px solid #a6accd;
-        flex: 1 1 45%; /* Default to 2 columns */
-        min-width: 40%;
-      }
-
-      /* Dynamic adjustments based on count (handled via flex logic mostly, but specific tweaks) */
-      .nway-3 .stat-box {
-        flex: 1 1 30%;
-      }
-
-      .nway-4 .stat-box {
+        border-radius: 4px;
+        padding: 10px;
         flex: 1 1 45%;
+        min-width: 45%;
       }
 
-      .stat-box strong {
-        color: #ebd2be;
-        display: block;
-        margin-bottom: 8px;
-        font-size: 11pt;
-        border-bottom: 1px solid #a6accd;
-        padding-bottom: 5px;
-        min-height: 2.5em; /* Ensure uniform height for titles */
+      .stat-value {
+        margin-top: 8px;
+        color: #98c379;
+        font-size: 13pt;
+        font-weight: bold;
       }
 
-      .insight-card {
-        background: #121212;
+      .analysis-card {
         border: 1px solid #a6accd;
-        padding: 25px;
-        margin-bottom: 25px;
         border-radius: 4px;
-        page-break-inside: avoid;
+        padding: 16px;
+        margin-bottom: 14px;
       }
 
-      /* Analysis section headers should look like cards headers */
-      .insight-card h3 {
-        border-bottom: 1px solid #a6accd;
-        padding-bottom: 10px;
-        margin-bottom: 15px;
-      }
-
-      /* list styling */
       ul {
-        padding-left: 20px;
-        color: #ebd2be;
-        margin-top: 5px;
+        padding-left: 18px;
+        margin: 6px 0 0 0;
       }
 
       li {
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
 
-      /* footer */
       .footer {
         position: fixed;
         bottom: 0;
@@ -196,14 +150,14 @@
         text-align: center;
         font-size: 8pt;
         color: #a6accd;
-        padding: 10px;
+        padding: 8px;
         border-top: 1px solid #a6accd;
-        background-color: #121212;
+        background: #121212;
       }
     </style>
   </head>
   <body>
-    <h1>Ethical Analysis Report</h1>
+    <h1>Strength Benchmark Report</h1>
 
     <table class="meta-table">
       <tr>
@@ -215,8 +169,12 @@
         <td>{{ run.modelName }}</td>
       </tr>
       <tr>
-        <td class="meta-label">Paradox</td>
-        <td>{{ paradox.title }}</td>
+        <td class="meta-label">Capability</td>
+        <td>{{ capability.title }}</td>
+      </tr>
+      <tr>
+        <td class="meta-label">Category</td>
+        <td>{{ capability.category or "General" }}</td>
       </tr>
       <tr>
         <td class="meta-label">Date</td>
@@ -224,134 +182,89 @@
       </tr>
     </table>
 
-    <div class="result-summary">
-      <h2>Experimental Results</h2>
-      <div style="margin-bottom: 20px">
-        <strong>Scenario:</strong><br />
-        <div class="scenario-text">
-          {{ paradox.promptTemplate | truncate(400) }}
-        </div>
+    <div class="card">
+      <h2>Benchmark Results</h2>
+      <div>
+        <strong>Prompt</strong>
+        <div class="scenario-text">{{ run.prompt | truncate(500) }}</div>
       </div>
 
-      {% if run.summary and run.summary.options %} {% set option_count =
-      run.summary.options | length %}
-      <div class="stats-container nway-{{ option_count }}">
-        {% for opt_stat in run.summary.options %} {% set opt_meta = run.options
-        | selectattr("id", "equalto", opt_stat.id) | first | default({}) %}
+      {% if run.summary and run.capabilityType == "capability" %}
+      <div class="stats-grid">
         <div class="stat-box">
-          <strong
-            >{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</strong
-          >
-          <div style="margin-top: 5px; color: #a6accd">
-            {{ opt_meta.get("description", "") | truncate(100) }}
-          </div>
-          <div
-            style="
-              margin-top: 10px;
-              color: #98c379;
-              font-size: 14pt;
-              font-weight: bold;
-            "
-          >
-            {{ opt_stat.count }} ({{ "%.1f"|format(opt_stat.percentage) }}%)
-          </div>
+          <div>Average Score</div>
+          <div class="stat-value">{{ "%.2f"|format(run.summary.averageScore or 0) }}</div>
         </div>
-        {% endfor %} {% if run.summary.undecided and run.summary.undecided.count
-        > 0 %}
-        <div class="stat-box" style="opacity: 0.7">
-          <strong>Undecided</strong>
-          <div
-            style="
-              margin-top: 10px;
-              color: #a6accd;
-              font-size: 14pt;
-              font-weight: bold;
-            "
-          >
-            {{ run.summary.undecided.count }} ({{
-            "%.1f"|format(run.summary.undecided.percentage) }}%)
-          </div>
+        <div class="stat-box">
+          <div>Pass Rate</div>
+          <div class="stat-value">{{ "%.1f"|format(run.summary.passRate or 0) }}%</div>
         </div>
-        {% endif %}
+        <div class="stat-box">
+          <div>Passed Iterations</div>
+          <div class="stat-value">{{ run.summary.passCount or 0 }} / {{ run.summary.total or 0 }}</div>
+        </div>
+        <div class="stat-box">
+          <div>Pass Threshold</div>
+          <div class="stat-value">{{ "%.2f"|format(run.summary.passThreshold or 0.8) }}</div>
+        </div>
       </div>
       {% endif %}
     </div>
 
     {% if insight and insight.content %}
-    <div class="analysis-section">
-      <h2>AI Analysis</h2>
+    {% set content = insight.content %}
+    <div>
+      <h2>Strength Analysis</h2>
 
-      {% set content = insight.content %} {% if content.legacy_text %}
-      <div class="insight-card">
+      {% if content.legacy_text %}
+      <div class="analysis-card">
         <p>{{ content.legacy_text }}</p>
       </div>
       {% else %}
-      <div class="insight-card">
-        <h3>Dominant Ethical Framework</h3>
-        <p>
-          <strong style="color: #98c379; font-size: 12pt"
-            >{{ content.dominant_framework }}</strong
-          >
-        </p>
+      <div class="analysis-card">
+        <h3>Executive Summary</h3>
+        <p>{{ content.executive_summary }}</p>
       </div>
 
-      <div class="insight-card">
-        <h3>Key Insights</h3>
+      <div class="analysis-card">
+        <h3>Strengths</h3>
         <ul>
-          {% for point in content.key_insights %}
-          <li>{{ point }}</li>
+          {% for item in content.strengths %}
+          <li>{{ item }}</li>
           {% endfor %}
         </ul>
       </div>
 
-      <div class="insight-card">
-        <h3>Moral Complexes</h3>
+      <div class="analysis-card">
+        <h3>Weaknesses</h3>
         <ul>
-          {% for complex in content.moral_complexes %}
-          <li>
-            <strong>{{ complex.label }}:</strong> {{ complex.count }} {% if
-            complex.justification %}
-            <div
-              style="
-                margin-top: 4px;
-                color: #a6accd;
-                font-size: 0.9em;
-                font-style: italic;
-                margin-bottom: 8px;
-              "
-            >
-              {{ complex.justification }}
-            </div>
-            {% endif %}
-          </li>
+          {% for item in content.weaknesses %}
+          <li>{{ item }}</li>
           {% endfor %}
         </ul>
       </div>
 
-      <div class="insight-card">
-        <h3>Consistency & Justification</h3>
-        <h4>Pattern Recognition</h4>
+      <div class="analysis-card">
+        <h3>Reliability</h3>
         <ul>
-          {% if content.justifications is string %}
-          <li>{{ content.justifications }}</li>
-          {% else %} {% for item in content.justifications %}
+          {% for item in content.reliability %}
           <li>{{ item }}</li>
-          {% endfor %} {% endif %}
+          {% endfor %}
         </ul>
+      </div>
 
-        <h4>Consistency Check</h4>
+      <div class="analysis-card">
+        <h3>Recommendations</h3>
         <ul>
-          {% if content.consistency is string %}
-          <li>{{ content.consistency }}</li>
-          {% else %} {% for item in content.consistency %}
+          {% for item in content.recommendations %}
           <li>{{ item }}</li>
-          {% endfor %} {% endif %}
+          {% endfor %}
         </ul>
       </div>
       {% endif %}
     </div>
     {% endif %}
 
-    <div class="footer">Generated by Anti-Gravity AI Ethics Comparator</div>
+    <div class="footer">Generated by Anti-Gravity AI Strength Comparator</div>
   </body>
 </html>

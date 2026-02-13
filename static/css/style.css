@@ -160,76 +160,70 @@ textarea:focus {
   gap: 1.5rem;
 }
 
-/* Paradox Details */
-.paradox-scenario {
-  font-size: 0.9rem;
-  margin-bottom: 1rem;
-  opacity: 0.9;
-  line-height: 1.5;
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
-.paradox-options {
+.action-row .btn {
+  width: auto;
+}
+
+/* Scenario Details */
+.scenario-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 1rem;
   font-size: 0.85rem;
 }
 
-.paradox-option {
+.scenario-option {
   background: var(--card-bg);
   padding: 0.75rem;
   border-radius: 4px;
   border-left: 3px solid var(--accent-primary);
 }
 
-.paradox-option strong {
+.scenario-option strong {
   color: var(--accent-primary);
 }
 
 /* N-Way Dynamic Option Colors */
-.paradox-option.option-1 {
+.scenario-option.option-1 {
   border-left-color: var(--option-1);
 }
-.paradox-option.option-1 strong {
+.scenario-option.option-1 strong {
   color: var(--option-1);
 }
 
-.paradox-option.option-2 {
+.scenario-option.option-2 {
   border-left-color: var(--option-2);
 }
-.paradox-option.option-2 strong {
+.scenario-option.option-2 strong {
   color: var(--option-2);
 }
 
-.paradox-option.option-3 {
+.scenario-option.option-3 {
   border-left-color: var(--option-3);
 }
-.paradox-option.option-3 strong {
+.scenario-option.option-3 strong {
   color: var(--option-3);
 }
 
-.paradox-option.option-4 {
+.scenario-option.option-4 {
   border-left-color: var(--option-4);
 }
-.paradox-option.option-4 strong {
+.scenario-option.option-4 strong {
   color: var(--option-4);
 }
 
-/* Backwards compatibility */
-.paradox-option--alt {
-  border-left-color: var(--accent-success);
-}
-
-.paradox-option--alt strong {
-  color: var(--accent-success);
-}
-
-.paradox-option p {
+.scenario-option p {
   margin: 0.25rem 0 0 0;
 }
 
 @media (max-width: 720px) {
-  .paradox-options {
+  .scenario-options {
     grid-template-columns: 1fr;
   }
 }
@@ -256,14 +250,37 @@ textarea:focus {
   opacity: 0.7;
 }
 
-.result-body {
-  margin: 1rem 0;
+.strength-badge {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.6rem;
 }
 
-.result-stats {
-  display: flex;
-  font-size: 0.8rem;
-  margin-bottom: 0.2rem;
+.strength-badge.strength-strong {
+  border-color: var(--accent-success);
+  color: var(--accent-success);
+}
+
+.strength-badge.strength-developing {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.strength-badge.strength-weak {
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+}
+
+.profile-item {
+  border-left-color: var(--accent-primary);
+}
+
+.result-body {
+  margin: 1rem 0;
 }
 
 /* N-Way Compact Stats */
@@ -290,27 +307,6 @@ textarea:focus {
   color: var(--text-color);
   opacity: 0.5;
   margin-top: 0.5rem;
-}
-
-.progress-bar {
-  height: 8px;
-  width: 100%;
-  background: var(--bg-color);
-  /* Was border-color, ensured palette */
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  overflow: hidden;
-  display: flex;
-}
-
-.progress-fill.success {
-  background: var(--accent-success);
-  width: var(--width, 0%);
-}
-
-.progress-fill.danger {
-  background: var(--accent-danger);
-  width: var(--width, 0%);
 }
 
 /* N-Way Stacked Progress Bar */
@@ -622,76 +618,6 @@ textarea:focus {
   align-items: center;
 }
 
-/* Stat Counters */
-.moral-complex-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.stat-counter {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  border-left: 2px solid var(--accent-primary);
-}
-
-.stat-label {
-  font-size: 0.85rem;
-  opacity: 0.9;
-}
-
-.stat-value {
-  font-weight: bold;
-  color: var(--accent-success);
-}
-
-.moral-complex-detail {
-  margin-bottom: 0.5rem;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--bg-color);
-}
-
-.moral-complex-summary {
-  cursor: pointer;
-  padding: 0.5rem;
-  font-weight: bold;
-  list-style: none;
-  display: flex;
-  justify-content: space-between;
-}
-
-.moral-complex-count {
-  color: var(--accent-success);
-}
-
-.moral-complex-justification {
-  padding: 0.75rem;
-  border-top: 1px solid var(--border-color);
-  font-size: 0.9rem;
-  opacity: 0.9;
-  line-height: 1.5;
-  color: var(--text-color);
-}
-
-.moral-complex-empty {
-  text-align: center;
-  opacity: 0.5;
-  padding: 1rem;
-}
-
-/* Framework Highlight */
-.dominant-framework {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: var(--accent-danger);
-  text-align: center;
-  margin: 1rem 0;
-}
-
 /* Insights List */
 .insights-list {
   list-style: none;
@@ -761,33 +687,6 @@ textarea:focus {
   opacity: 0.8;
 }
 
-.distribution-undecided-label {
-  font-weight: 600;
-  opacity: 0.7;
-}
-
-.distribution-undecided-count {
-  opacity: 0.6;
-}
-
-.distribution-bar-track {
-  width: 100%;
-  height: 24px;
-  background: var(--bg-color);
-  border-radius: 4px;
-  overflow: hidden;
-  border: 1px solid var(--border-color);
-}
-
-.distribution-bar-fill {
-  height: 100%;
-}
-
-.distribution-bar-undecided {
-  background: var(--undecided);
-  opacity: 0.5;
-}
-
 .analysis-json-details {
   margin-top: 2rem;
   border: 1px solid var(--border-color);
@@ -819,54 +718,6 @@ textarea:focus {
 
 .analysis-json-empty {
   color: var(--accent-danger);
-}
-
-/* Native Details/Summary (Replaces JS Accordion) */
-.json-details {
-  margin-top: 2rem;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  position: relative;
-  z-index: 1;
-}
-
-.json-summary {
-  padding: 0.75rem 1rem;
-  cursor: pointer !important;
-  font-size: 0.85rem;
-  opacity: 0.8;
-  list-style: none; /* Hide default arrow */
-  user-select: none;
-}
-
-.summary-flex-wrapper {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-}
-
-.json-summary::-webkit-details-marker {
-  display: none; /* Hide default arrow in Chrome/Safari */
-}
-
-.json-content {
-  padding: 1rem;
-  border-top: 1px solid var(--border-color);
-  color: var(--text-color);
-  background: var(--bg-color);
-  position: relative;
-  z-index: 2;
-  overflow: visible !important;
-}
-
-.json-details[open] .toggle-icon {
-  transform: rotate(180deg);
-}
-
-.toggle-icon {
-  transition: transform 0.2s ease;
-  font-size: 0.7rem;
 }
 
 /* Responsive */

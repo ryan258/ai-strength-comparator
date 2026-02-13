@@ -12,10 +12,10 @@ def test_legacy_run_ids_are_migrated_to_strict_format(client) -> None:
     legacy_path = results_root / "legacyrun.json"
     legacy_data = {
         "modelName": "test/model",
-        "paradoxId": "autonomous_vehicle_equal_innocents",
-        "paradoxType": "trolley",
-        "responses": [{"decisionToken": "{1}", "explanation": "test"}],
-        "summary": {"options": [], "undecided": {"count": 0, "percentage": 0}},
+        "capabilityId": "math_order_of_ops",
+        "capabilityType": "capability",
+        "responses": [{"iteration": 1, "raw": "57", "score": 1.0, "passed": True}],
+        "summary": {"averageScore": 1.0, "passRate": 100.0, "passCount": 1, "total": 1},
         "options": [],
         "timestamp": "2026-01-01T00:00:00+00:00",
     }

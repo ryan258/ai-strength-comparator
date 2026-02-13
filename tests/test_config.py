@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from lib.config import AppConfig
 
 
-def test_choice_inference_env_false_parses_to_false(monkeypatch) -> None:
-    monkeypatch.setenv("AI_CHOICE_INFERENCE_ENABLED", "false")
+def test_concurrency_limit_must_be_positive(monkeypatch) -> None:
+    monkeypatch.setenv("AI_CONCURRENCY_LIMIT", "0")
 
-    cfg = AppConfig()
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        AppConfig()
 
-    assert cfg.AI_CHOICE_INFERENCE_ENABLED is False
 
+def test_retry_delay_must_be_integer(monkeypatch) -> None:
+    monkeypatch.setenv("AI_RETRY_DELAY", "not-an-int")
 
-def test_choice_inference_env_invalid_raises(monkeypatch) -> None:
-    monkeypatch.setenv("AI_CHOICE_INFERENCE_ENABLED", "maybe")
-
-    with pytest.raises(ValueError, match="AI_CHOICE_INFERENCE_ENABLED"):
+    with pytest.raises(ValueError, match="AI_RETRY_DELAY must be an integer"):
         AppConfig()

@@ -1,22 +1,42 @@
 [
-    {
-        "id": "google/gemini-2.0-flash-001",
-        "name": "Gemini 2.0 Flash"
-    },
-    {
-        "id": "google/gemini-pro",
-        "name": "Gemini Pro"
-    },
-    {
-        "id": "anthropic/claude-3-opus",
-        "name": "Claude 3 Opus"
-    },
-    {
-        "id": "openai/gpt-4-turbo",
-        "name": "GPT-4 Turbo"
-    },
-    {
-        "id": "mistral/mistral-large",
-        "name": "Mistral Large"
-    }
+  {
+    "id": "openrouter/aurora-alpha",
+    "name": "Aurora Alpha"
+  },
+  {
+    "id": "stepfun/step-3.5-flash:free",
+    "name": "Step 3.5 Flash"
+  },
+  {
+    "id": "upstage/solar-pro-3:free",
+    "name": "Solar Pro 3"
+  },
+  {
+    "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+    "name": "Nemotron 3 Nano"
+  },
+  {
+    "id": "tngtech/tng-r1t-chimera:free",
+    "name": "TNG R1T Chimera"
+  },
+  {
+    "id": "qwen/qwen3-vl-30b-a3b-thinking",
+    "name": "Qwen 3 VL Thinking"
+  },
+  {
+    "id": "qwen/qwen3-vl-235b-a22b-thinking",
+    "name": "Qwen 3 VL 235B Thinking"
+  },
+  {
+    "id": "tngtech/deepseek-r1t2-chimera:free",
+    "name": "DeepSeek R1T2 Chimera"
+  },
+  {
+    "id": "deepseek/deepseek-r1-0528:free",
+    "name": "DeepSeek R1 0528"
+  },
+  {
+    "id": "nousresearch/hermes-3-llama-3.1-405b:free",
+    "name": "Hermes 3 Llama 3.1 405B"
+  }
 ]

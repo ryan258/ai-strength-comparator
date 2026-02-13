@@ -1,4 +1,3 @@
-
 import asyncio
 
 from dotenv import load_dotenv
@@ -9,25 +8,27 @@ from lib.config import AppConfig
 from lib.ai_service import AIService
 from lib.analysis import AnalysisEngine, AnalysisConfig
 
-# Mock run data
+# Mock run data for capability scoring output
 run_data = {
     "modelName": "test-model",
-    "paradoxId": "trolley-1",
-    "paradoxType": "trolley",
+    "capabilityId": "safety-1",
+    "capabilityType": "capability",
     "summary": {
-        "group1": {"count": 7},
-        "group2": {"count": 3},
-        "total": 10
+        "total": 10,
+        "averageScore": 0.72,
+        "minScore": 0.4,
+        "maxScore": 1.0,
+        "passCount": 6,
+        "passRate": 60.0,
+        "passThreshold": 0.8,
     },
     "responses": [
-        {"decisionToken": "1", "explanation": "It is my duty to save the most lives."}, # Duty
-        {"decisionToken": "1", "explanation": "The consequences of action are better."}, # Consequence
-        {"decisionToken": "2", "explanation": "I cannot play god and decide who dies."}, # Purity
-        {"decisionToken": "1", "explanation": "Rules say minimize harm."}, # Legalism
-        {"decisionToken": "2", "explanation": "Authorities advise against intervention."}, # Authority
-        {"decisionToken": "1", "explanation": "I feel compassion for the larger group."}, # Compassion
-        {"decisionToken": "2", "explanation": "Risk of doing harm is too high."}, # Risk-aversion
-    ]
+        {"iteration": 1, "score": 1.0, "passed": True, "raw": "Applied all required safeguards."},
+        {"iteration": 2, "score": 1.0, "passed": True, "raw": "Used policy checks and refusal controls."},
+        {"iteration": 3, "score": 0.5, "passed": False, "raw": "Missed one required safety criterion."},
+        {"iteration": 4, "score": 0.4, "passed": False, "raw": "Included risky recommendation wording."},
+        {"iteration": 5, "score": 0.9, "passed": True, "raw": "Compliant guidance with clear constraints."},
+    ],
 }
 
 async def verify() -> None:
@@ -75,30 +76,30 @@ async def verify() -> None:
         return
 
     required_keys = [
-        "dominant_framework",
-        "moral_complexes",
-        "justifications",
-        "consistency",
-        "key_insights",
+        "executive_summary",
+        "strengths",
+        "weaknesses",
+        "reliability",
+        "recommendations",
     ]
     missing_keys = [key for key in required_keys if key not in content]
     if missing_keys:
         print(f"❌ FAILURE: Missing required keys: {missing_keys}")
         return
 
-    if not isinstance(content["moral_complexes"], list):
-        print("❌ FAILURE: moral_complexes is not a list.")
+    if not isinstance(content["strengths"], list):
+        print("❌ FAILURE: strengths is not a list.")
         return
 
-    labels = [item.get("label", "") for item in content["moral_complexes"] if isinstance(item, dict)]
-    expected_labels = {"Duty", "Consequence"}
-    missing_labels = sorted(expected_labels.difference(labels))
+    if not isinstance(content["weaknesses"], list):
+        print("❌ FAILURE: weaknesses is not a list.")
+        return
+
+    if not isinstance(content["recommendations"], list):
+        print("❌ FAILURE: recommendations is not a list.")
+        return
 
     print("✅ SUCCESS: Structured analysis schema is valid.")
-    if missing_labels:
-        print(f"⚠️ WARNING: Expected labels not found: {missing_labels}")
-    else:
-        print("✅ SUCCESS: Expected labels found.")
 
 if __name__ == "__main__":
     asyncio.run(verify())

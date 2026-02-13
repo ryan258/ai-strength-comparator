@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 # Strict Candlelight Palette (Reference)
 # Background: #121212
@@ -20,38 +20,41 @@ class ModelConfig(BaseModel):
     name: str
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    """Parse common boolean env formats with a strict fallback."""
+def _env_int(name: str, default: int) -> int:
+    """Parse integer env values with explicit validation errors."""
     raw = os.getenv(name)
     if raw is None:
         return default
 
-    normalized = raw.strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-
-    raise ValueError(
-        f"{name} must be one of: true/false, 1/0, yes/no, on/off"
-    )
+    try:
+        return int(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer.") from exc
 
 
 class AppConfig(BaseModel):
+    model_config = ConfigDict(validate_default=True)
+
     # App Identity
-    APP_NAME: str = "AI Ethics Comparator"
+    APP_NAME: str = "AI Strength Comparator"
     VERSION: str = "6.0.0"
 
     # AI Service Config
-    AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: int(os.getenv("AI_CONCURRENCY_LIMIT", "2")))
-    AI_MAX_RETRIES: int = Field(default_factory=lambda: int(os.getenv("AI_MAX_RETRIES", "5")))
-    AI_RETRY_DELAY: int = Field(default_factory=lambda: int(os.getenv("AI_RETRY_DELAY", "2")))
-    AI_CHOICE_INFERENCE_ENABLED: bool = Field(
-        default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", True)
+    AI_CONCURRENCY_LIMIT: int = Field(
+        default_factory=lambda: _env_int("AI_CONCURRENCY_LIMIT", 2),
+        ge=1,
+    )
+    AI_MAX_RETRIES: int = Field(
+        default_factory=lambda: _env_int("AI_MAX_RETRIES", 5),
+        ge=0,
+    )
+    AI_RETRY_DELAY: int = Field(
+        default_factory=lambda: _env_int("AI_RETRY_DELAY", 2),
+        ge=0,
     )
     
     # Limits
-    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "20"))
+    MAX_ITERATIONS: int = Field(default_factory=lambda: _env_int("MAX_ITERATIONS", 20), ge=1)
 
     # URLs (required - no hardcoded defaults)
     APP_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))

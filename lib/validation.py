@@ -1,15 +1,17 @@
 """
 Validation - Arsenal Module
-Copy-paste ready: Works in any project using Pydantic
+Pydantic request/parameter models.
 """
 
-from typing import Optional, Any, List
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, List, Optional
 import re
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class GenerationParams(BaseModel):
-    """Generation parameters for reproducibility"""
+    """Generation parameters for reproducibility."""
+
     temperature: float = Field(default=1.0, ge=0, le=2)
     top_p: float = Field(default=1.0, ge=0, le=1)
     max_tokens: int = Field(default=1000, ge=1, le=4000)
@@ -18,110 +20,133 @@ class GenerationParams(BaseModel):
     presence_penalty: float = Field(default=0, ge=0, le=2)
 
 
-class OptionInput(BaseModel):
-    """Single option override for N-way paradoxes"""
-    id: int = Field(..., ge=1, le=4, description="Option ID (1-4)")
-    description: str = Field(..., max_length=1000, description="Option description text")
-
-
-class OptionInputs(BaseModel):
-    """Optional option overrides for trolley-type paradoxes (N-way support)"""
-    options: Optional[List[OptionInput]] = Field(
-        default=None,
-        max_items=4,
-        min_items=2,
-        description="List of option overrides (2-4 options)"
-    )
-
-    @field_validator('options')
-    @classmethod
-    def validate_sequential_ids(cls, v: Optional[List[OptionInput]]) -> Optional[List[OptionInput]]:
-        """Ensure option IDs are sequential starting from 1"""
-        if v:
-            ids = sorted([opt.id for opt in v])
-            expected = list(range(1, len(ids) + 1))
-            if ids != expected:
-                raise ValueError(f'Option IDs must be sequential starting from 1. Got {ids}, expected {expected}')
-        return v
-
-
 class QueryRequest(BaseModel):
-    """Experimental run request"""
+    """Single capability test run request."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     model_name: str = Field(..., alias="modelName", min_length=1, max_length=200)
-    paradox_id: str = Field(..., alias="paradoxId", min_length=1, max_length=100)
-    option_overrides: Optional[OptionInputs] = Field(default=None, alias="optionOverrides")
-    iterations: Optional[int] = Field(default=10, ge=1, le=1000)
+    capability_id: str = Field(
+        ...,
+        alias="capabilityId",
+        min_length=1,
+        max_length=100,
+    )
+    iterations: Optional[int] = Field(default=10, ge=1)
     system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
     params: Optional[GenerationParams] = None
 
-    class Config:
-        populate_by_name = True
-
-    @field_validator('model_name')
+    @field_validator("model_name")
     @classmethod
-    def validate_model_name(cls, v: str) -> str:
-        if not re.match(r'^[a-z0-9\-_/:.]+$', v, re.IGNORECASE):
-            raise ValueError('Invalid model name format')
-        return v
+    def validate_model_name(cls, value: str) -> str:
+        if not re.match(r"^[a-z0-9\-_/:.]+$", value, re.IGNORECASE):
+            raise ValueError("Invalid model name format")
+        return value
 
-    @field_validator('paradox_id')
+    @field_validator("capability_id")
     @classmethod
-    def validate_paradox_id(cls, v: str) -> str:
-        if not re.match(r'^[a-z0-9_-]+$', v, re.IGNORECASE):
-            raise ValueError('Invalid paradox ID format')
-        return v
+    def validate_capability_id(cls, value: str) -> str:
+        if not re.match(r"^[a-z0-9_-]+$", value, re.IGNORECASE):
+            raise ValueError("Invalid capability ID format")
+        return value
 
-    @model_validator(mode='before')
+    @model_validator(mode="before")
     @classmethod
     def parse_flat_form_data(cls, data: Any) -> Any:
-        # If data is a dict (like from JSON body), check for flattened keys
-        if isinstance(data, dict):
-            new_data = data.copy()
-            params = new_data.get('params', {})
-            option_overrides = new_data.get('optionOverrides', {})
+        if not isinstance(data, dict):
+            return data
 
-            # Helper: ensure sub-dict exists
-            if not isinstance(params, dict): params = {}
-            if not isinstance(option_overrides, dict): option_overrides = {}
+        new_data = data.copy()
+        params = new_data.get("params", {})
 
-            keys_to_remove = []
-            for k, v in new_data.items():
-                if k.startswith('params.'):
-                    sub_key = k.split('.', 1)[1]
-                    params[sub_key] = v
-                    keys_to_remove.append(k)
-                elif k == 'iterations' and v == '':
-                    # Handle empty strings from form inputs: skip to let default apply
-                    continue
+        if not isinstance(params, dict):
+            params = {}
 
-            for k in keys_to_remove:
-                new_data.pop(k)
+        keys_to_remove: List[str] = []
+        for key, value in new_data.items():
+            if key.startswith("params."):
+                sub_key = key.split(".", 1)[1]
+                params[sub_key] = value
+                keys_to_remove.append(key)
+            elif key == "iterations" and value == "":
+                continue
 
-            if params:
-                new_data['params'] = params
+        for key in keys_to_remove:
+            new_data.pop(key, None)
 
-            if option_overrides:
-                new_data['optionOverrides'] = option_overrides
+        if params:
+            new_data["params"] = params
 
-            # Type casting for form inputs (forms send strings)
-            if 'iterations' in new_data and isinstance(new_data['iterations'], str):
-                try:
-                    new_data['iterations'] = int(new_data['iterations'])
-                except ValueError:
-                    pass # Pydantic will validation error later
+        if "iterations" in new_data and isinstance(new_data["iterations"], str):
+            try:
+                new_data["iterations"] = int(new_data["iterations"])
+            except ValueError:
+                pass
 
-            return new_data
-        return data
+        return new_data
 
 
-class InsightRequest(BaseModel):
-    """AI insight generation request"""
-    runData: dict
-    analystModel: Optional[str] = Field(default=None, min_length=1, max_length=200)
+class StrengthProfileRequest(BaseModel):
+    """Multi-scenario strength profile request."""
 
-    @field_validator('runData')
+    model_config = ConfigDict(populate_by_name=True)
+
+    model_name: str = Field(..., alias="modelName", min_length=1, max_length=200)
+    iterations: Optional[int] = Field(default=1, ge=1)
+    categories: Optional[List[str]] = Field(default=None)
+    system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
+    params: Optional[GenerationParams] = None
+
+    @field_validator("model_name")
     @classmethod
-    def validate_run_data(cls, v: dict) -> dict:
-        if 'responses' not in v or len(v['responses']) < 1:
-            raise ValueError('runData must contain at least one response')
-        return v
+    def validate_model_name(cls, value: str) -> str:
+        if not re.match(r"^[a-z0-9\-_/:.]+$", value, re.IGNORECASE):
+            raise ValueError("Invalid model name format")
+        return value
+
+    @field_validator("categories")
+    @classmethod
+    def validate_categories(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+
+        clean = [item.strip() for item in value if isinstance(item, str) and item.strip()]
+        return clean or None
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_form_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        parsed = data.copy()
+
+        raw_categories = parsed.get("categories")
+        if isinstance(raw_categories, str):
+            categories = [item.strip() for item in raw_categories.split(",") if item.strip()]
+            parsed["categories"] = categories or None
+
+        params = parsed.get("params", {})
+        if not isinstance(params, dict):
+            params = {}
+
+        keys_to_remove: List[str] = []
+        for key, value in parsed.items():
+            if key.startswith("params."):
+                sub_key = key.split(".", 1)[1]
+                params[sub_key] = value
+                keys_to_remove.append(key)
+
+        for key in keys_to_remove:
+            parsed.pop(key, None)
+
+        if params:
+            parsed["params"] = params
+
+        if "iterations" in parsed and isinstance(parsed["iterations"], str):
+            try:
+                parsed["iterations"] = int(parsed["iterations"])
+            except ValueError:
+                pass
+
+        return parsed

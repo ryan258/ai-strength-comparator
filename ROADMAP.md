@@ -1,78 +1,61 @@
-# AI Ethics Comparator Roadmap
+# AI Strength Comparator Roadmap
 
-Last updated: February 6, 2026
+Last updated: February 12, 2026
 
-## Current State
+## Current Focus
+The project now targets deterministic capability benchmarking and model strength profiling.
 
-The project is operating as a local-first FastAPI + HTMX modular monolith with:
+Core delivered baseline:
 
-- app-factory startup initialization (`main.py`)
-- typed validation at HTTP boundaries (`lib/validation.py`)
-- strict run ID enforcement (`<base>-NNN`)
-- startup migration for legacy run IDs (`lib/storage.py`)
-- trolley-only scenario execution (2-4 options)
-- analysis modal + safe error rendering path
-- PDF export for stored runs
-- minimal pytest suite for startup/run-id/error-safety guarantees
+- local-first FastAPI + HTMX benchmark runner
+- deterministic per-capability scoring (`required` / `forbidden` regex)
+- multi-capability profile runs (`/api/profile`)
+- strongest/weakest area aggregation
+- run storage + PDF reporting + analysis workflow
 
-## Recently Completed
+## Near-Term Priorities
 
-- migrated route/service wiring to startup-time dependency initialization
-- centralized strict run ID validation around `STRICT_RUN_ID_PATTERN`
-- added legacy-ID migration into startup lifecycle
-- added escaped analysis error partial (`templates/partials/analysis_error.html`)
-- added baseline tests:
-  - `tests/test_startup.py`
-  - `tests/test_run_id_validation.py`
-  - `tests/test_run_id_migration.py`
-  - `tests/test_analysis_error_render.py`
+### Milestone 1: Capability Test Quality Hardening
 
-## Next Milestones
+- expand benchmark suite with higher-signal tasks per category
+- reduce ambiguous prompts and weak regex checks
+- add capability-test linting checks (format quality + grading quality)
 
-### Milestone 1: Run ID Hardening
+### Milestone 2: Scoring Robustness
 
-- tighten regex semantics if needed (for example, lowercase-only base or stricter separators)
-- add explicit migration policy for any new regex change
-- add tests for accepted/rejected edge cases and migration idempotency
+- add richer scoring modes (exact match, numeric tolerance, structured JSON checks)
+- track false positives/false negatives from current regex-only grading
+- enforce stricter pass-threshold policy by capability type
 
-### Milestone 2: Test Reliability
+### Milestone 3: Comparability and Reporting
 
-- ensure test dependencies are consistently installed in dev workflow
-- reduce skip-based behavior in CI/dev by standardizing test environment
-- extend coverage for:
-  - query execution error mapping
-  - insight persistence behavior
-  - paradox loading failure path
+- add model-vs-model comparison views
+- add category trend reporting across historical runs
+- improve profile report readability for model selection decisions
 
-### Milestone 3: Storage and Lifecycle Hygiene
+### Milestone 4: Reliability and Test Coverage
 
-- decide retention/cleanup policy for migrated legacy files
-- document migration observability (what gets logged, what is skipped)
-- add optional admin utility for migration audit/reporting
+- add tests for profile endpoint edge cases and capability loader constraints
+- add regression tests for capability scoring behavior
+- ensure deterministic CI test environment
 
-### Milestone 4: Analysis Robustness
+### Milestone 5: Benchmark Operations
 
-- tighten structured insight schema validation
-- improve fallback behavior when analyst output is malformed JSON
-- add deterministic tests for structured insight parsing branches
+- define governance for capability-test changes (versioning and changelog)
+- provide migration notes when benchmark definitions change
+- establish baseline suites (fast/dev vs full/deep)
 
-### Milestone 5: Documentation Discipline
+## Non-Goals
 
-- keep `README.md` as source-of-truth quickstart
-- keep `HANDBOOK.md` user-facing and implementation-accurate
-- mark historical planning/review docs as archival snapshots
-
-## Non-Goals (Current)
-
-- no Docker/k8s/Terraform migration
-- no React or frontend build pipeline
-- no heavy auth infrastructure
-- no distributed services split
+- Docker/k8s/Terraform migration
+- frontend framework rewrite
+- heavy auth/infrastructure expansion
+- distributed service decomposition
 
 ## Success Criteria
 
-The near-term roadmap is successful when:
+The roadmap is successful when:
 
-1. run ID policy changes are migration-safe and fully tested
-2. pytest runs are deterministic in standard dev setup
-3. docs and implementation remain synchronized without contradictory claims
+1. capability tests are objectively gradable and high signal
+2. model profiles are reliable enough for model selection decisions
+3. benchmark changes remain versioned, testable, and reproducible

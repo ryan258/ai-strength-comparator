@@ -1,0 +1,12 @@
+<div class="scenario-details fade-in">
+  <h3>{{ capability.title }}</h3>
+  {% if capability.category %}
+  <div style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.5rem;">
+    Capability Category: {{ capability.category }}
+  </div>
+  {% endif %}
+  <div class="scenario-body">
+    <strong>Capability Prompt:</strong><br />
+    {{ capability_text }}
+  </div>
+</div>

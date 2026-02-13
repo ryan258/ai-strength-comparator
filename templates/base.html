@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{ title | default("AI Ethics Comparator") }}</title>
+    <title>{{ title | default("AI Strength Comparator") }}</title>
 
     <!-- Factories (System Fonts) -->
     <!-- Removed external Google Fonts to reduce supply-chain risk -->
@@ -21,9 +21,9 @@
   <body>
     <header>
       <div class="container">
-        <h1>AI Ethics Comparator</h1>
+        <h1>AI Strength Comparator</h1>
         <p style="color: var(--accent-primary)">
-          Arsenal Strategy Implementation
+          Capability Benchmarking Engine
         </p>
       </div>
     </header>
@@ -39,20 +39,8 @@
         font-size: 0.8rem;
       "
     >
-      <p>Powered by Python, FastAPI & HTMX</p>
+      <p>Powered by Python, FastAPI, and HTMX</p>
     </footer>
 
-    <!-- Global Interactions -->
-    <script>
-      document.addEventListener("click", function (e) {
-        // Accordion Handler (Delegated for HTMX content)
-        if (e.target.closest(".accordion-header")) {
-          const accordion = e.target.closest(".accordion");
-          if (accordion) {
-            accordion.classList.toggle("open");
-          }
-        }
-      });
-    </script>
   </body>
 </html>

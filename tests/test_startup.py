@@ -21,19 +21,20 @@ def test_version_header_is_attached(client) -> None:
     assert response.headers["X-App-Version"] == "6.0.0"
 
 
-def test_choice_inference_enabled_by_default(client) -> None:
+def test_query_processor_is_initialized(client) -> None:
     qp = client.app.state.services.query_processor
-    assert qp.choice_inference_model == "test/model"
+    assert qp is not None
+    assert hasattr(qp, "semaphore")
 
 
-def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
+def test_query_processor_uses_configured_concurrency(monkeypatch, tmp_path: Path) -> None:
     main = importlib.import_module("main")
 
     class DummyReportGenerator:
         def __init__(self, templates_dir: str = "templates") -> None:
             self.templates_dir = templates_dir
 
-        def generate_pdf_report(self, run_data, paradox, insight=None) -> bytes:
+        def generate_pdf_report(self, run_data, capability, insight=None) -> bytes:
             return b"%PDF-1.4\n"
 
     class TempRunStorage(main.RunStorage):
@@ -50,10 +51,10 @@ def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
         AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
         ANALYST_MODEL="test/model",
         DEFAULT_MODEL="test/model",
-        AI_CHOICE_INFERENCE_ENABLED=False,
+        AI_CONCURRENCY_LIMIT=3,
     )
     app = main.create_app(config_override=config)
 
     with TestClient(app) as test_client:
         qp = test_client.app.state.services.query_processor
-        assert qp.choice_inference_model is None
+        assert qp.semaphore._value == 3

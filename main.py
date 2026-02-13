@@ -1,9 +1,10 @@
 """
-AI Ethics Comparator - Main Server
+AI Strength Comparator - Main Server
 App factory with startup-time service initialization.
 """
 
 import io
+import asyncio
 import logging
 import os
 import random
@@ -12,7 +13,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -21,17 +22,27 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from lib.ai_service import AIService
+from lib.ai_service import (
+    AIAuthenticationError,
+    AIBillingError,
+    AIRateLimitError,
+    AIService,
+    AIServiceError,
+)
 from lib.analysis import AnalysisConfig, AnalysisEngine
+from lib.capabilities import (
+    extract_capability_text,
+    get_capability_by_id,
+    load_capabilities,
+)
 from lib.config import AppConfig
-from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
 from lib.query_processor import QueryProcessor, RunConfig
 from lib.reporting import ReportGenerator
 from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN
-from lib.validation import InsightRequest, QueryRequest
+from lib.strength_profile import build_strength_profile, filter_capability_tests
+from lib.validation import QueryRequest, StrengthProfileRequest
 from lib.view_models import RunViewModel, fetch_recent_run_view_models, safe_markdown
 
-# Load environment before startup config resolution.
 load_dotenv()
 
 logging.basicConfig(
@@ -52,7 +63,7 @@ class AppServices:
     analysis_engine: AnalysisEngine
     report_generator: ReportGenerator
     templates: Jinja2Templates
-    paradoxes_path: Path
+    capabilities_path: Path
 
 
 def _build_templates(templates_dir: str) -> Jinja2Templates:
@@ -73,10 +84,50 @@ def _get_services(request: Request) -> AppServices:
     return services
 
 
+def _resolve_iterations(
+    requested_iterations: Optional[int],
+    max_iterations: int,
+    default: int,
+) -> int:
+    iterations = requested_iterations if requested_iterations is not None else default
+    if iterations < 1:
+        raise HTTPException(status_code=400, detail="Iterations must be >= 1")
+    if iterations > max_iterations:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Iterations {iterations} exceeds limit of {max_iterations}",
+        )
+    return iterations
+
+
+async def _persist_new_run(
+    storage: RunStorage,
+    model_name: str,
+    run_data: dict[str, Any],
+    max_attempts: int = 5,
+) -> str:
+    for attempt in range(max_attempts):
+        run_id = await storage.generate_run_id(model_name)
+        run_data["runId"] = run_id
+        try:
+            await storage.save_run(run_id, run_data, allow_overwrite=False)
+            return run_id
+        except FileExistsError:
+            backoff_seconds = min(0.02 * (2**attempt), 0.2) + random.uniform(0, 0.02)
+            logger.warning(
+                "Run ID collision detected for %s, retrying after %.3fs",
+                run_id,
+                backoff_seconds,
+            )
+            await asyncio.sleep(backoff_seconds)
+            continue
+    raise RuntimeError("Failed to persist run after repeated run_id collisions")
+
+
 def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
     templates_dir = "templates"
     templates = _build_templates(templates_dir)
-    paradoxes_path = Path(__file__).parent / "paradoxes.json"
+    capabilities_path = Path(__file__).parent / "capabilities.json"
     analysis_prompt_path = Path(__file__).parent / templates_dir / "analysis_prompt.txt"
 
     if config_override is not None:
@@ -84,7 +135,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         app_version = config_override.VERSION
         allowed_origins = [config_override.APP_BASE_URL] if config_override.APP_BASE_URL else []
     else:
-        app_title = "AI Ethics Comparator"
+        app_title = "AI Strength Comparator"
         app_version = "0.0.0"
         app_base_url = os.getenv("APP_BASE_URL")
         allowed_origins = [app_base_url] if app_base_url else []
@@ -115,9 +166,6 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         query_processor = QueryProcessor(
             ai_service,
             concurrency_limit=config.AI_CONCURRENCY_LIMIT,
-            choice_inference_model=(
-                config.ANALYST_MODEL if config.AI_CHOICE_INFERENCE_ENABLED else None
-            ),
         )
         analysis_engine = AnalysisEngine(
             ai_service,
@@ -132,7 +180,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             analysis_engine=analysis_engine,
             report_generator=report_generator,
             templates=templates,
-            paradoxes_path=paradoxes_path,
+            capabilities_path=capabilities_path,
         )
         app_instance.title = config.APP_NAME
         app_instance.version = config.VERSION
@@ -169,38 +217,52 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
     async def index(request: Request) -> HTMLResponse:
         services = _get_services(request)
         config = services.config
+
         try:
-            paradoxes = load_paradoxes(services.paradoxes_path)
+            capabilities = load_capabilities(services.capabilities_path)
         except Exception as exc:
-            logger.error("Failed to load paradoxes: %s", exc)
+            logger.error("Failed to load capabilities: %s", exc)
             raise HTTPException(
                 status_code=500,
-                detail="Failed to load paradox definitions. Please check server logs.",
+                detail="Failed to load capability definitions. Please check server logs.",
             ) from exc
 
         recent_run_contexts = await fetch_recent_run_view_models(
             services.storage,
-            paradoxes,
+            capabilities,
             config.ANALYST_MODEL,
         )
 
-        initial_paradox = random.choice(paradoxes) if paradoxes else None
-        initial_scenario_text = ""
-        if initial_paradox:
-            initial_scenario_text = extract_scenario_text(
-                initial_paradox.get("promptTemplate", "")
+        initial_pool = [item for item in capabilities if item.get("type") == "capability"]
+        if not initial_pool:
+            initial_pool = capabilities
+
+        initial_capability = random.choice(initial_pool) if initial_pool else None
+        initial_capability_text = ""
+        if initial_capability:
+            initial_capability_text = extract_capability_text(
+                initial_capability.get("promptTemplate", "")
             )
+
+        capability_categories = sorted(
+            {
+                str(item.get("category", "General"))
+                for item in capabilities
+                if item.get("type") == "capability" and str(item.get("category", "")).strip()
+            }
+        )
 
         return services.templates.TemplateResponse(
             request,
             "index.html",
             {
-                "paradoxes": paradoxes,
+                "capabilities": capabilities,
                 "models": config.AVAILABLE_MODELS,
                 "default_model": config.DEFAULT_MODEL,
                 "recent_run_contexts": recent_run_contexts,
-                "initial_paradox": initial_paradox,
-                "initial_scenario_text": initial_scenario_text,
+                "initial_capability": initial_capability,
+                "initial_capability_text": initial_capability_text,
+                "capability_categories": capability_categories,
                 "max_iterations": config.MAX_ITERATIONS,
             },
         )
@@ -216,39 +278,39 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             "uptime": "N/A",
         }
 
-    @app.get("/api/paradoxes")
-    async def get_paradoxes(request: Request) -> list:
+    @app.get("/api/capabilities")
+    async def get_capabilities(request: Request) -> list[dict[str, Any]]:
         services = _get_services(request)
         try:
-            return load_paradoxes(services.paradoxes_path)
+            return load_capabilities(services.capabilities_path)
         except Exception as exc:
-            logger.error("Failed to read paradoxes: %s", exc)
-            raise HTTPException(status_code=500, detail="Failed to read paradoxes.") from exc
+            logger.error("Failed to read capabilities: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to read capabilities.") from exc
 
-    @app.get("/api/fragments/paradox-details")
-    async def get_paradox_details(request: Request, paradoxId: str) -> HTMLResponse:
+    @app.get("/api/fragments/capability-details")
+    async def get_capability_details(request: Request, capabilityId: str) -> HTMLResponse:
         services = _get_services(request)
         try:
-            paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, paradoxId)
-            if not paradox:
-                return HTMLResponse("<div>Paradox not found</div>", status_code=404)
+            capabilities = load_capabilities(services.capabilities_path)
+            capability = get_capability_by_id(capabilities, capabilityId)
+            if capability is None:
+                return HTMLResponse("<div>Capability not found</div>", status_code=404)
 
-            scenario_text = extract_scenario_text(paradox.get("promptTemplate", ""))
+            capability_text = extract_capability_text(capability.get("promptTemplate", ""))
             return services.templates.TemplateResponse(
                 request,
-                "partials/paradox_details.html",
+                "partials/capability_details.html",
                 {
-                    "paradox": paradox,
-                    "scenario_text": scenario_text,
+                    "capability": capability,
+                    "capability_text": capability_text,
                 },
             )
         except Exception as exc:
-            logger.error("Failed to get paradox details: %s", exc)
+            logger.error("Failed to get capability details: %s", exc)
             return HTMLResponse("<div>Error loading details</div>", status_code=500)
 
     @app.get("/api/runs")
-    async def list_runs(request: Request) -> list:
+    async def list_runs(request: Request) -> list[dict[str, Any]]:
         services = _get_services(request)
         try:
             return await services.storage.list_runs()
@@ -257,7 +319,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Failed to retrieve runs.") from exc
 
     @app.get("/api/runs/{run_id}")
-    async def get_run(request: Request, run_id: str) -> dict:
+    async def get_run(request: Request, run_id: str) -> dict[str, Any]:
         services = _get_services(request)
         _validate_run_id(run_id)
         try:
@@ -270,49 +332,45 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             logger.error("Failed to get run %s: %s", run_id, exc)
             raise HTTPException(status_code=500, detail="Failed to retrieve run data.") from exc
 
-    @app.post("/api/query")
-    async def execute_query(request: Request, query_request: QueryRequest):
+    @app.post("/api/query", response_model=None)
+    async def execute_query(
+        request: Request,
+        query_request: QueryRequest,
+    ) -> dict[str, Any] | HTMLResponse:
         services = _get_services(request)
         config = services.config
         try:
-            paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, query_request.paradox_id)
-            if not paradox:
+            capabilities = load_capabilities(services.capabilities_path)
+            capability = get_capability_by_id(capabilities, query_request.capability_id)
+            if capability is None:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Paradox '{query_request.paradox_id}' not found",
+                    detail=f"Capability '{query_request.capability_id}' not found",
                 )
 
-            req_iterations = query_request.iterations or 10
-            if req_iterations > config.MAX_ITERATIONS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"Iterations {req_iterations} exceeds limit of {config.MAX_ITERATIONS}"
-                    ),
-                )
+            req_iterations = _resolve_iterations(
+                query_request.iterations,
+                config.MAX_ITERATIONS,
+                default=10,
+            )
 
             run_config = RunConfig(
                 modelName=query_request.model_name,
-                paradox=paradox,
-                option_overrides=(
-                    [opt.model_dump() for opt in query_request.option_overrides.options]
-                    if query_request.option_overrides and query_request.option_overrides.options
-                    else None
-                ),
+                capability=capability,
                 iterations=req_iterations,
                 systemPrompt=query_request.system_prompt or "",
                 params=query_request.params.model_dump() if query_request.params else {},
             )
 
             run_data = await services.query_processor.execute_run(run_config)
-
-            run_id = await services.storage.generate_run_id(query_request.model_name)
-            run_data["runId"] = run_id
-            await services.storage.save_run(run_id, run_data)
+            await _persist_new_run(
+                services.storage,
+                query_request.model_name,
+                run_data,
+            )
 
             if request.headers.get("HX-Request"):
-                vm = RunViewModel.build(run_data, paradox)
+                vm = RunViewModel.build(run_data, capability)
                 vm["config_analyst_model"] = config.ANALYST_MODEL
                 return services.templates.TemplateResponse(
                     request,
@@ -323,43 +381,149 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return run_data
         except HTTPException:
             raise
+        except AIAuthenticationError as exc:
+            raise HTTPException(status_code=401, detail="Invalid API key or unauthorized.") from exc
+        except AIRateLimitError as exc:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.") from exc
+        except AIBillingError as exc:
+            raise HTTPException(status_code=402, detail="Insufficient API credits.") from exc
+        except AIServiceError as exc:
+            logger.error("Query execution failed: %s", exc)
+            raise HTTPException(status_code=500, detail="Internal server error") from exc
         except Exception as exc:
             logger.error("Query execution failed: %s", exc)
-            error_str = str(exc).lower()
-            if "401" in error_str or "unauthorized" in error_str:
-                raise HTTPException(status_code=401, detail="Invalid API Key or Unauthorized.") from exc
-            if "429" in error_str or "rate limit" in error_str:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.") from exc
-            if "insufficient_quota" in error_str or "quota" in error_str:
-                raise HTTPException(status_code=402, detail="Insufficient API credits.") from exc
             raise HTTPException(status_code=500, detail="Internal server error") from exc
 
-    @app.post("/api/insight")
-    async def generate_insight(request: Request, insight_request: InsightRequest) -> dict:
+    @app.post("/api/profile", response_model=None)
+    async def execute_profile(
+        request: Request,
+        profile_request: StrengthProfileRequest,
+    ) -> dict[str, Any] | HTMLResponse:
         services = _get_services(request)
+        config = services.config
         try:
-            model_to_use = insight_request.analystModel or services.config.ANALYST_MODEL
-            cfg = AnalysisConfig(
-                run_data=insight_request.runData,
-                analyst_model=model_to_use,
+            capabilities = load_capabilities(services.capabilities_path)
+            available_categories = sorted(
+                {
+                    str(item.get("category", "General"))
+                    for item in capabilities
+                    if item.get("type") == "capability" and str(item.get("category", "")).strip()
+                }
             )
-            insight_data = await services.analysis_engine.generate_insight(cfg)
+            if profile_request.categories:
+                valid_categories = {category.lower(): category for category in available_categories}
+                invalid_categories = sorted(
+                    {
+                        category
+                        for category in profile_request.categories
+                        if category.lower() not in valid_categories
+                    }
+                )
+                if invalid_categories:
+                    invalid_csv = ", ".join(invalid_categories)
+                    valid_csv = ", ".join(available_categories) or "none"
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Invalid categories: {invalid_csv}. "
+                            f"Valid categories: {valid_csv}."
+                        ),
+                    )
 
-            if "runId" in insight_request.runData:
-                run_id = insight_request.runData["runId"]
-                if RUN_ID_PATTERN.fullmatch(run_id):
-                    try:
-                        existing_run = await services.storage.get_run(run_id)
-                        if "insights" not in existing_run:
-                            existing_run["insights"] = []
-                        existing_run["insights"].append(insight_data)
-                        await services.storage.save_run(run_id, existing_run)
-                    except Exception as save_error:
-                        logger.error("Error saving insight: %s", save_error)
+            selected_capabilities = filter_capability_tests(
+                capabilities,
+                profile_request.categories,
+            )
+            if not selected_capabilities:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No capability tests found for the selected filters.",
+                )
 
-            return {"insight": insight_data["content"], "model": model_to_use}
+            req_iterations = _resolve_iterations(
+                profile_request.iterations,
+                config.MAX_ITERATIONS,
+                default=1,
+            )
+
+            capability_concurrency = max(1, min(config.AI_CONCURRENCY_LIMIT, len(selected_capabilities)))
+            capability_semaphore = asyncio.Semaphore(capability_concurrency)
+
+            async def run_profile_capability(capability: dict[str, Any]) -> dict[str, Any]:
+                async with capability_semaphore:
+                    run_config = RunConfig(
+                        modelName=profile_request.model_name,
+                        capability=capability,
+                        iterations=req_iterations,
+                        systemPrompt=profile_request.system_prompt or "",
+                        params=profile_request.params.model_dump() if profile_request.params else {},
+                    )
+                    run_data = await services.query_processor.execute_run(run_config)
+                    await _persist_new_run(
+                        services.storage,
+                        profile_request.model_name,
+                        run_data,
+                    )
+                    return run_data
+
+            tasks = [run_profile_capability(capability) for capability in selected_capabilities]
+            run_results = await asyncio.gather(*tasks, return_exceptions=True)
+            runs: list[dict[str, Any]] = []
+            errors: list[dict[str, str]] = []
+            for capability, run_result in zip(selected_capabilities, run_results):
+                if isinstance(run_result, Exception):
+                    error_message = str(run_result).strip() or "Unknown error"
+                    error_info = {
+                        "capabilityId": str(capability.get("id", "unknown")),
+                        "errorType": type(run_result).__name__,
+                        "message": error_message,
+                    }
+                    logger.error(
+                        "Profile capability run failed for %s: %s",
+                        capability.get("id"),
+                        run_result,
+                    )
+                    errors.append(error_info)
+                    continue
+                runs.append(run_result)
+
+            if not runs:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "message": "All capability runs failed.",
+                        "errors": errors,
+                    },
+                )
+
+            profile = build_strength_profile(
+                model_name=profile_request.model_name,
+                runs=runs,
+                capabilities=selected_capabilities,
+            )
+            partial = bool(errors)
+
+            if request.headers.get("HX-Request"):
+                return services.templates.TemplateResponse(
+                    request,
+                    "partials/profile_item.html",
+                    {
+                        "profile": profile,
+                        "partial": partial,
+                        "errors": errors,
+                    },
+                )
+
+            return {
+                "profile": profile,
+                "runs": runs,
+                "partial": partial,
+                "errors": errors,
+            }
+        except HTTPException:
+            raise
         except Exception as exc:
-            logger.error("Insight generation failed: %s", exc)
+            logger.error("Profile execution failed: %s", exc)
             raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     @app.post("/api/runs/{run_id}/analyze")
@@ -367,11 +531,24 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         services = _get_services(request)
         _validate_run_id(run_id)
         model_to_use = services.config.ANALYST_MODEL
+
+        def render_analysis_error(error_message: str, status_code: int) -> HTMLResponse:
+            return services.templates.TemplateResponse(
+                request,
+                "partials/analysis_error.html",
+                {
+                    "error_message": error_message,
+                    "model": model_to_use or "",
+                    "run_id": run_id,
+                },
+                status_code=status_code,
+            )
+
         try:
             form_data = await request.form()
             requested_analyst = form_data.get("analyst_model")
             if requested_analyst and not MODEL_NAME_PATTERN.match(requested_analyst):
-                return HTMLResponse("<div class='error'>Invalid model name format</div>", status_code=400)
+                return render_analysis_error("Invalid model name format", status_code=400)
 
             run_data = await services.storage.get_run(run_id)
 
@@ -417,18 +594,30 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                     "run_data": run_data,
                 },
             )
+        except FileNotFoundError:
+            logger.warning("Analysis target run not found: %s", run_id)
+            return render_analysis_error(f"Run '{run_id}' not found", status_code=404)
+        except ValueError as exc:
+            logger.warning("Analysis request validation failed for %s: %s", run_id, exc)
+            return render_analysis_error(str(exc), status_code=400)
+        except AIRateLimitError as exc:
+            logger.warning("Analysis rate-limited for %s: %s", run_id, exc)
+            return render_analysis_error(
+                "Rate limit exceeded. Try again with fewer requests.",
+                status_code=429,
+            )
+        except AIBillingError as exc:
+            logger.warning("Analysis billing failure for %s: %s", run_id, exc)
+            return render_analysis_error("Insufficient API credits.", status_code=402)
+        except AIAuthenticationError as exc:
+            logger.warning("Analysis authentication failure for %s: %s", run_id, exc)
+            return render_analysis_error("Invalid API key or unauthorized.", status_code=401)
+        except AIServiceError as exc:
+            logger.error("Analysis service failure for %s: %s", run_id, exc)
+            return render_analysis_error("Analysis service error.", status_code=502)
         except Exception as exc:
             logger.error("Analysis failed: %s", exc)
-            return services.templates.TemplateResponse(
-                request,
-                "partials/analysis_error.html",
-                {
-                    "error_message": str(exc),
-                    "model": model_to_use or "",
-                    "run_id": run_id,
-                },
-                status_code=200,
-            )
+            return render_analysis_error("Internal server error", status_code=500)
 
     @app.get("/api/runs/{run_id}/pdf")
     async def download_pdf_report(request: Request, run_id: str) -> StreamingResponse:
@@ -436,16 +625,17 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         _validate_run_id(run_id)
         try:
             run_data = await services.storage.get_run(run_id)
-            paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, run_data["paradoxId"])
-            if not paradox:
-                raise HTTPException(status_code=404, detail="Paradox definition not found")
+            capabilities = load_capabilities(services.capabilities_path)
+            capability_id = run_data.get("capabilityId")
+            capability = get_capability_by_id(capabilities, str(capability_id))
+            if capability is None:
+                raise HTTPException(status_code=404, detail="Capability definition not found")
 
             insight = None
             if "insights" in run_data and run_data["insights"]:
                 insight = run_data["insights"][-1]
 
-            pdf_bytes = services.report_generator.generate_pdf_report(run_data, paradox, insight)
+            pdf_bytes = services.report_generator.generate_pdf_report(run_data, capability, insight)
             return StreamingResponse(
                 io.BytesIO(pdf_bytes),
                 media_type="application/pdf",
@@ -459,7 +649,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             raise
         except Exception as exc:
             logger.exception("PDF generation failed for %s", run_id)
-            raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {exc}") from exc
+            raise HTTPException(status_code=500, detail="Failed to generate PDF report.") from exc
 
     return app
 

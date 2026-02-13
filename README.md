@@ -1,32 +1,65 @@
-# AI Ethics Comparator (FastAPI + HTMX)
+# AI Strength Comparator (FastAPI + HTMX)
 
-AI Ethics Comparator is a local-first research tool for measuring how LLMs respond to trolley-style ethical dilemmas across repeated iterations.
+AI Strength Comparator is a local-first benchmarking app that measures what an LLM is reliably good at, where it is weak, and how it performs across capability categories.
 
-## Current Scope
+See the project direction in `NORTH_STAR.md`.
 
-- Paradox type: `trolley` only (2-4 options per scenario)
-- Storage format: flat JSON files at `results/<run_id>.json`
-- Run ID format: strict `<base>-NNN` (example: `claude-3-opus-001`)
-- Legacy migration: startup migrates legacy IDs to strict format
+## North Star
+Produce **actionable, deterministic model strength profiles**.
+
+For each model, the app should answer:
+
+- What capability areas are strongest?
+- What areas are weakest?
+- How reliable are results across repeated runs?
+
+## Benchmark Model
+Capability tests are defined in `capabilities.json`.
+
+Each capability test uses deterministic grading:
+
+- `evaluation.required`: regex patterns that must appear
+- `evaluation.forbidden`: regex patterns that must not appear
+- `evaluation.pass_threshold`: normalized threshold for pass/fail
+
+For creativity and ideation tasks, scoring uses constrained-output novelty proxies (anti-cliche constraints, mechanism + validation requirements).
+For research tasks, scoring is source-grounded: outputs must match evidence and required citation format.
+
+### Capability Test Requirements
+A strong capability test should be:
+
+1. Single-objective
+2. Strict-output (token/number/JSON/CSV/etc.)
+3. Deterministically gradable
+4. Low-ambiguity
+5. Time-stable
+
+## Default Capability Domains
+The default suite includes tests for:
+
+- Reasoning
+- Logic
+- Data Reasoning
+- Instruction Following
+- Extraction
+- Coding
+- Creativity
+- Novel Ideation
+- Research Grounding
+- Writing (creative, email, social/viral-style)
+- Safety
+- Reliability
 
 ## Stack
-
 - Backend: FastAPI
 - Templates: Jinja2
 - Interactivity: HTMX
-- AI provider: OpenRouter via OpenAI Python SDK
+- AI Provider: OpenRouter via OpenAI Python SDK
 - Reports: WeasyPrint PDF generation
 
 ## Quick Start
 
-### 1. Environment
-
-Requirements:
-
-- Python 3.10+
-- OpenRouter API key
-
-Install dependencies:
+### 1. Install
 
 ```bash
 python3 -m venv venv
@@ -35,24 +68,21 @@ pip install -r requirements.txt
 pip install pytest
 ```
 
-### 2. Configure
-
-Create `.env` (or copy from `.example.env`):
+### 2. Configure `.env`
 
 ```env
 OPENROUTER_API_KEY=sk-or-your-key-here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 APP_BASE_URL=http://localhost:8000
-APP_NAME="AI Ethics Comparator"
+APP_NAME="AI Strength Comparator"
 
-# optional overrides
+# optional
 ANALYST_MODEL=provider/model-name
 DEFAULT_MODEL=provider/model-name
 MAX_ITERATIONS=20
 AI_CONCURRENCY_LIMIT=2
 AI_MAX_RETRIES=5
 AI_RETRY_DELAY=2
-AI_CHOICE_INFERENCE_ENABLED=true
 ```
 
 ### 3. Run
@@ -71,51 +101,46 @@ Open [http://localhost:8000](http://localhost:8000).
 pytest
 ```
 
-Minimal suite currently covers:
+## Core Flows
 
-- startup/health behavior
-- strict run ID validation
-- legacy run ID migration
-- safe analysis error rendering (escaped output)
+- `Run Selected Test`: execute one capability test repeatedly
+- `Run Full Strength Profile`: run all capability tests (or filtered categories)
+- `View Analysis`: generate model-level strengths/weaknesses commentary
+- `PDF Export`: download run report
 
-## API Surface
+## API Endpoints
 
 - `GET /` - main UI
 - `GET /health` - health + version
-- `GET /api/paradoxes` - list paradox definitions
-- `GET /api/fragments/paradox-details?paradoxId=...` - HTMX fragment
-- `POST /api/query` - execute run
-- `GET /api/runs` - list run metadata
-- `GET /api/runs/{run_id}` - get full run record
-- `POST /api/insight` - generate and optionally persist insight
-- `POST /api/runs/{run_id}/analyze` - HTMX analysis render
-- `GET /api/runs/{run_id}/pdf` - PDF export
+- `GET /api/capabilities` - list capability tests (canonical)
+- `POST /api/query` - execute one capability test run
+- `POST /api/profile` - execute full/filtered multi-capability profile
+- `GET /api/runs` - list stored runs
+- `GET /api/runs/{run_id}` - fetch run data
+- `POST /api/runs/{run_id}/analyze` - generate strength/weakness analysis
+- `GET /api/runs/{run_id}/pdf` - export PDF report
 
-## Run Data Shape
+## Run Data Shape (Capability Run)
 
-Each run file (`results/<run_id>.json`) includes:
+Stored under `results/<run_id>.json`:
 
-- identity: `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
-- prompt + execution config: `prompt`, optional `systemPrompt`, `iterationCount`, `params`
-- option metadata: `options[]`
-- per-iteration responses: `responses[]`
-- aggregate stats: `summary.options[]` + `summary.undecided`
-- optional analysis history: `insights[]`
-
-## Repository Layout
-
-- `main.py` - app factory, startup wiring, routes
-- `lib/` - reusable modules (`ai_service`, `query_processor`, `analysis`, `storage`, etc.)
-- `templates/` - Jinja2 views/partials
-- `static/` - Candlelight theme assets
-- `tests/` - pytest suite
-- `paradoxes.json` - scenario library
-- `results/` - persisted run output (gitignored)
-- `CONTRIBUTING.md` - contribution and documentation sync rules
+- `runId`, `timestamp`, `modelName`, `capabilityId`, `capabilityType`
+- `prompt`, optional `systemPrompt`, `iterationCount`, `params`
+- `responses[]` with `raw`, `score`, `passed`, and evidence fields
+- `summary.averageScore`, `summary.passRate`, `summary.passCount`
+- optional `insights[]`
 
 ## Security and Operational Notes
 
-- Required secrets validated at startup (`OPENROUTER_API_KEY`, `APP_BASE_URL`, `OPENROUTER_BASE_URL`)
-- Strict run ID regex blocks malformed lookup paths
-- Markdown rendering escapes raw HTML and strips links/images
-- `.env` is gitignored; `.example.env` documents expected variables
+- Secrets are env-only (`OPENROUTER_API_KEY`, `APP_BASE_URL`, `OPENROUTER_BASE_URL`)
+- Strict run ID validation is enforced on retrieval routes
+- Markdown rendering escapes HTML and strips links/images
+- `.env` is gitignored; `.example.env` documents required vars
+
+## How to Extend the Benchmark
+
+1. Add new capability objects in `capabilities.json`.
+2. Keep prompts constrained and outputs machine-checkable.
+3. Use precise regex patterns in `required` / `forbidden`.
+4. Run `pytest` to verify startup/loading behavior.
+5. Compare profile output quality before and after additions.

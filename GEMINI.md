@@ -29,7 +29,7 @@ No hardcoded keys, endpoints, or model names.
 - `main.py` uses an app factory and startup service wiring.
 - Run IDs are strict: `<base>-NNN`.
 - Legacy IDs are migrated on startup.
-- Scenarios are currently trolley-only (2-4 options).
+- Scenarios are currently capability-only with deterministic scoring.
 - Tests exist under `tests/` and should be runnable with `pytest`.
 
 ## Coding Standards

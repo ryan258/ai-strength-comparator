@@ -5,11 +5,40 @@ Copy-paste ready: Just provide config
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List
-from openai import AsyncOpenAI
 import logging
+from typing import Any, Dict, List, Optional
+
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
+
+
+class AIServiceError(Exception):
+    """Base exception for AI service errors."""
+
+    def __init__(self, message: str, status_code: Optional[int] = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class AIAuthenticationError(AIServiceError):
+    """Raised for 401 authentication failures."""
+
+
+class AIBillingError(AIServiceError):
+    """Raised for 402/403 billing or quota issues."""
+
+
+class AIRateLimitError(AIServiceError):
+    """Raised for 429 rate limit failures after retries."""
+
+
+class AIModelNotFoundError(AIServiceError):
+    """Raised for 404 model-not-found errors."""
+
+
+class AIEmptyResponseError(AIServiceError):
+    """Raised when the model returns no usable text content."""
 
 class AIService:
     """AI Service for OpenRouter API with exponential backoff retry"""
@@ -139,7 +168,7 @@ class AIService:
         Args:
             model_name: Model identifier
             prompt: User prompt
-            system_prompt: Optional system prompt for ethical priming
+            system_prompt: Optional system prompt for behavior priming
             params: Generation parameters
             retry_count: Current retry attempt (internal)
 
@@ -188,7 +217,7 @@ class AIService:
             if response_text:
                 return response_text
 
-            raise Exception(self._empty_response_error(response))
+            raise AIEmptyResponseError(self._empty_response_error(response))
 
         except Exception as error:
             return await self._handle_error(error, model_name, prompt, system_prompt, params, retry_count)
@@ -203,7 +232,11 @@ class AIService:
         retry_count: int,
     ) -> str:
         """Handle errors with retry logic"""
-        logger.error(f"Error querying OpenRouter: {error}")
+        logger.error("Error querying OpenRouter: %s", error)
+
+        # Re-raise our own typed errors directly.
+        if isinstance(error, AIServiceError):
+            raise error
 
         # Check for status code in error
         status_code = getattr(error, 'status_code', None)
@@ -227,17 +260,15 @@ class AIService:
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
-            # Add context based on status code
             if status_code == 404:
-                raise Exception(f"[404] Model not found: {error_msg}")
-            elif status_code == 429:
-                raise Exception(f"[429] Rate limit exceeded after {self.max_retries} retries: {error_msg}")
-            elif status_code in (402, 403):
-                raise Exception(f"[{status_code}] Billing or authentication issue: {error_msg}")
-            elif status_code == 401:
-                raise Exception(f"[401] Invalid API key: {error_msg}")
-            else:
-                raise Exception(f"[{status_code}] OpenRouter API error: {error_msg}")
+                raise AIModelNotFoundError(error_msg, status_code=404)
+            if status_code == 429:
+                raise AIRateLimitError(error_msg, status_code=429)
+            if status_code in (402, 403):
+                raise AIBillingError(error_msg, status_code=status_code)
+            if status_code == 401:
+                raise AIAuthenticationError(error_msg, status_code=401)
+            raise AIServiceError(error_msg, status_code=status_code)
 
         # Handle network errors
         if "JSON" in error_msg or "Connection" in error_msg:
@@ -253,10 +284,12 @@ class AIService:
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
-            raise Exception(f"[Network] API error after {self.max_retries} retries: {error_msg}")
+            raise AIServiceError(
+                f"API error after {self.max_retries} retries: {error_msg}"
+            )
 
         # Preserve explicit model-output failures without wrapping.
-        if error_msg.startswith("Model "):
-            raise Exception(error_msg)
+        if isinstance(error, AIEmptyResponseError):
+            raise error
 
-        raise Exception(f"[Unknown] Failed to retrieve response: {error_msg}")
+        raise AIServiceError(f"Failed to retrieve response: {error_msg}")

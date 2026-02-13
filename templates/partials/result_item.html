@@ -1,64 +1,52 @@
 <div class="result-item">
   <div class="result-header">
-    <h3>{{ ctx.model_name }}</h3>
-    <span class="result-subtitle">{{ ctx.paradox_title }}</span>
-    {% if ctx.system_prompt %}
-    <div style="font-size: 0.8rem; color: var(--accent-primary); margin-top: 0.25rem; font-style: italic; opacity: 0.9;">
-        <span style="font-weight: bold; opacity: 0.7;">System Persona:</span> "{{ ctx.system_prompt }}"
+    <div>
+      <h3>{{ ctx.model_name }}</h3>
+      <span class="result-subtitle">
+        {{ ctx.capability_title }}
+        {% if ctx.capability_category %}- {{ ctx.capability_category }}{% endif %}
+      </span>
+      {% if ctx.system_prompt %}
+      <div style="font-size: 0.8rem; color: var(--accent-primary); margin-top: 0.25rem; font-style: italic; opacity: 0.9;">
+        <span style="font-weight: bold; opacity: 0.7;">Persona:</span> "{{ ctx.system_prompt }}"
+      </div>
+      {% endif %}
     </div>
-    {% endif %}
+
+    <span class="strength-badge strength-{{ ctx.strength_class }}">{{ ctx.strength_label }}</span>
   </div>
 
   <div class="result-body">
     <div class="scenario-box">
-      <h4 class="scenario-title">The Scenario</h4>
-      <div class="markdown-body">{{ ctx.scenario_html }}</div>
+      <h4 class="scenario-title">Capability Prompt</h4>
+      <div class="markdown-body">{{ ctx.capability_html }}</div>
     </div>
 
-    {% if ctx.paradox_type == 'trolley' %}
     <div class="result-stats-compact">
-      {% for opt in ctx.options_summary %}
       <div class="result-stats-row">
-        <span class="result-stats-count">{{ opt.count }} ({{ "%.1f"|format(opt.percentage) }}%)</span>
-        <span class="result-stats-label" title="{{ opt.description }}">
-          <strong>{{ opt.label }}:</strong> {{ opt.description[:60] }}{% if opt.description|length > 60 %}...{% endif %}
-        </span>
+        <span class="result-stats-count">{{ "%.2f"|format(ctx.capability_score) }}</span>
+        <span class="result-stats-label"><strong>Average Score</strong></span>
       </div>
-      {% endfor %}
-      {% if ctx.undecided_count > 0 %}
       <div class="result-stats-row">
-        <span class="result-stats-count">{{ ctx.undecided_count }} ({{ "%.1f"|format(ctx.undecided_percentage) }}%)</span>
-        <span class="result-stats-label">
-          <strong>Undecided</strong>
-        </span>
+        <span class="result-stats-count">{{ "%.1f"|format(ctx.pass_rate) }}%</span>
+        <span class="result-stats-label"><strong>Pass Rate</strong></span>
       </div>
-      {% endif %}
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ ctx.pass_count }} / {{ ctx.total_responses }}</span>
+        <span class="result-stats-label"><strong>Iterations Passed</strong></span>
+      </div>
     </div>
 
-    <!-- N-Way Stacked Progress Bar -->
     <div class="progress-bar-stacked">
-      {% for opt in ctx.options_summary %}
-      <div class="progress-segment option-{{ opt.id }}"
-           style="width: {{ opt.percentage }}%;"
-           title="{{ opt.label }}: {{ "%.1f"|format(opt.percentage) }}%">
-      </div>
-      {% endfor %}
-      {% if ctx.undecided_count > 0 %}
-      <div class="progress-segment undecided"
-           style="width: {{ ctx.undecided_percentage }}%;"
-           title="Undecided: {{ "%.1f"|format(ctx.undecided_percentage) }}%">
-      </div>
-      {% endif %}
+      <div class="progress-segment option-1" style="width: {{ ctx.pass_rate }}%;" title="Pass rate"></div>
+      <div class="progress-segment option-4" style="width: {{ 100 - ctx.pass_rate }}%;" title="Fail rate"></div>
     </div>
-    {% endif %}
+
     <div class="result-id">Run ID: {{ ctx.run_id }}</div>
   </div>
 
   <div class="result-actions">
-    <button
-      class="btn btn-primary btn-sm"
-      onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()"
-    >
+    <button class="btn btn-primary btn-sm" onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()">
       View Analysis
     </button>
     <a
@@ -66,30 +54,18 @@
       class="btn btn-sm"
       target="_blank"
       rel="noopener noreferrer"
-      style="
-        text-decoration: none;
-        margin-left: 0.5rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      "
+      style="text-decoration: none; margin-left: 0.5rem; display: inline-flex; align-items: center; justify-content: center;"
     >
-      📄 PDF
+      PDF
     </a>
   </div>
 
   <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
     <div class="modal-header">
-      <h2>Ethical Analysis</h2>
-      <button
-        class="btn btn-sm"
-        onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()"
-      >
-        ✕
-      </button>
+      <h2>Strength Analysis</h2>
+      <button class="btn btn-sm" onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()">Close</button>
     </div>
 
-    <!-- Analysis Container (Loads via HTMX on modal open) -->
     <div id="analysis-content-{{ ctx.run_id }}">
       {% if ctx.has_insight %}
       <div class="empty-state">
@@ -110,11 +86,7 @@
         <p class="empty-state-text">No analysis generated yet.</p>
 
         <div class="analysis-input-group">
-          <label
-            for="analystModel-{{ ctx.run_id }}"
-            class="analysis-input-label"
-            >Analyst Model</label
-          >
+          <label for="analystModel-{{ ctx.run_id }}" class="analysis-input-label">Analyst Model</label>
           <input
             type="text"
             name="analyst_model"
@@ -123,9 +95,7 @@
             placeholder="e.g. provider/model-name"
             class="analysis-input-field"
           />
-          <div class="analysis-input-help">
-            Override the default analyst model if desired.
-          </div>
+          <div class="analysis-input-help">Override the default analyst model if desired.</div>
         </div>
 
         <button
@@ -136,14 +106,9 @@
           hx-swap="innerHTML"
           hx-indicator="#loading-{{ ctx.run_id }}"
         >
-          ✨ Generate Ethical Analysis
+          Generate Strength Analysis
         </button>
-        <div
-          id="loading-{{ ctx.run_id }}"
-          class="htmx-indicator manual-analyze-btn"
-        >
-          Analyzing...
-        </div>
+        <div id="loading-{{ ctx.run_id }}" class="htmx-indicator manual-analyze-btn">Analyzing...</div>
       </div>
       {% endif %}
     </div>
@@ -151,6 +116,11 @@
     <div class="modal-footer-container">
       <details>
         <summary class="summary-toggle">View Run JSON</summary>
+        {% if ctx.run_data_json_truncated %}
+        <div style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 0.5rem;">
+          Showing a truncated preview. Use `/api/runs/{{ ctx.run_id }}` for full JSON.
+        </div>
+        {% endif %}
         <div class="json-dump">{{ ctx.run_data_json }}</div>
       </details>
     </div>

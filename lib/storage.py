@@ -4,13 +4,18 @@ Filesystem-based run persistence
 Copy-paste ready: Just provide results_root path
 """
 
-import json
 import asyncio
-import re
-from pathlib import Path
-from typing import Dict, List, Any
-from datetime import datetime, timezone
 import base64
+import json
+import logging
+import os
+import re
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List
+
+logger = logging.getLogger(__name__)
 
 STRICT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+-\d{3}$")
 LEGACY_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
@@ -21,6 +26,7 @@ class RunStorage:
 
     def __init__(self, results_root: str) -> None:
         self.results_root = Path(results_root)
+        self._id_lock = asyncio.Lock()
 
     @staticmethod
     def _sanitize_base_name(raw: str) -> str:
@@ -57,32 +63,17 @@ class RunStorage:
             Unique run ID
         """
         await self.ensure_results_dir()
-        
         loop = asyncio.get_running_loop()
 
-        # Helper: Atomic directory creation loop
-        def _get_next_id():
-            # Sanitize model name - strict charset + required -NNN suffix.
+        def _get_next_id() -> str:
             sanitized = self._sanitize_base_name(model_name)
             if not sanitized:
-                sanitized = self._sanitize_base_name(base64.urlsafe_b64encode(model_name.encode()).decode()[:10])
+                encoded = base64.urlsafe_b64encode(model_name.encode()).decode()[:10]
+                sanitized = self._sanitize_base_name(encoded)
+            return self._next_run_id(sanitized)
 
-            for _ in range(20): # Retry loop
-                # Attempt to reserve this ID atomically via File Creation (Flat JSON)
-                run_id = self._next_run_id(sanitized)
-                run_file = self.results_root / f"{run_id}.json"
-                
-                try:
-                    # Exclusive file creation is strictly atomic on POSIX
-                    with open(run_file, 'x') as f:
-                        pass # Touch file to reserve name
-                    return run_id
-                except FileExistsError:
-                    continue # ID taken, retry scan
-                    
-            raise RuntimeError("Failed to generate unique Run ID after multiple attempts")
-
-        return await loop.run_in_executor(None, _get_next_id)
+        async with self._id_lock:
+            return await loop.run_in_executor(None, _get_next_id)
 
     async def migrate_legacy_run_ids(self) -> Dict[str, str]:
         """
@@ -138,14 +129,20 @@ class RunStorage:
                         json.dump(source_data, f, indent=2)
 
                     migrated[source_id] = strict_id
-                except Exception:
+                except Exception as exc:
+                    logger.warning("Skipping legacy run migration for %s: %s", entry, exc)
                     continue
 
             return migrated
 
         return await loop.run_in_executor(None, _migrate)
 
-    async def save_run(self, run_id: str, run_data: Dict[str, Any]) -> None:
+    async def save_run(
+        self,
+        run_id: str,
+        run_data: Dict[str, Any],
+        allow_overwrite: bool = True,
+    ) -> None:
         """
         Save run data to filesystem (flat file preference)
 
@@ -153,18 +150,42 @@ class RunStorage:
             run_id: Unique run identifier
             run_data: Complete run data
         """
+        if not isinstance(run_id, str) or not STRICT_RUN_ID_PATTERN.fullmatch(run_id):
+            raise ValueError("Invalid run_id")
+
         await self.ensure_results_dir()
-        
+
         loop = asyncio.get_running_loop()
-        
+
         # Determine target file (Flat file only)
         # Legacy folders are no longer supported for new writes (migration required)
         run_file = self.results_root / f"{run_id}.json"
+        encoded_payload = json.dumps(run_data, indent=2).encode("utf-8")
 
-        def _write():
-            with open(run_file, 'w') as f:
-                json.dump(run_data, f, indent=2)
-                
+        def _write() -> None:
+            if allow_overwrite:
+                fd, tmp_name = tempfile.mkstemp(
+                    prefix=f".{run_id}.",
+                    suffix=".tmp",
+                    dir=self.results_root,
+                )
+                try:
+                    with os.fdopen(fd, "wb") as tmp_file:
+                        tmp_file.write(encoded_payload)
+                        tmp_file.flush()
+                        os.fsync(tmp_file.fileno())
+                    os.replace(tmp_name, run_file)
+                finally:
+                    if os.path.exists(tmp_name):
+                        os.unlink(tmp_name)
+                return
+
+            fd = os.open(run_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            with os.fdopen(fd, "wb") as run_file_handle:
+                run_file_handle.write(encoded_payload)
+                run_file_handle.flush()
+                os.fsync(run_file_handle.fileno())
+
         await loop.run_in_executor(None, _write)
 
     async def list_runs(self) -> List[Dict[str, Any]]:
@@ -189,7 +210,7 @@ class RunStorage:
                     if entry.is_dir():
                         run_json_path = entry / "run.json"
                         if run_json_path.exists():
-                            with open(run_json_path, 'r') as f:
+                            with open(run_json_path, "r", encoding="utf-8") as f:
                                 data = json.load(f)
                                 # Basic validation
                                 if "runId" in data or "timestamp" in data:
@@ -197,7 +218,7 @@ class RunStorage:
                                 
                     # Check for flat file structure
                     elif entry.is_file() and entry.suffix == ".json":
-                        with open(entry, 'r') as f:
+                        with open(entry, "r", encoding="utf-8") as f:
                             data = json.load(f)
                             if "runId" in data or "timestamp" in data:
                                 run_data = data
@@ -213,7 +234,7 @@ class RunStorage:
                             "runId": run_id,
                             "timestamp": run_data.get("timestamp", ""),
                             "modelName": run_data.get("modelName", "Unknown"),
-                            "paradoxId": run_data.get("paradoxId", "Unknown"),
+                            "capabilityId": run_data.get("capabilityId", "Unknown"),
                             "iterationCount": run_data.get("iterationCount", 0),
                             "filePath": f"results/{entry.name}"
                         }
@@ -227,9 +248,7 @@ class RunStorage:
                                 runs_by_id[run_id] = metadata
 
                 except Exception as e:
-                    # Log error but continue listing other files
-                    import logging
-                    logging.getLogger(__name__).error(f"Error reading run file {entry}: {e}")
+                    logger.error("Error reading run file %s: %s", entry, e)
 
             # Helper for robust timestamp parsing
             def parse_ts(ts):
@@ -270,12 +289,14 @@ class RunStorage:
         
         # Path resolution validation
         try:
-             run_path = (self.results_root / run_id).resolve()
-             root_path = self.results_root.resolve()
-             if not str(run_path).startswith(str(root_path)):
-                 raise ValueError("Path traversal attempt")
+            run_path = (self.results_root / run_id).resolve()
+            root_path = self.results_root.resolve()
+            if not run_path.is_relative_to(root_path):
+                raise ValueError("Path traversal attempt")
+        except ValueError:
+            raise
         except Exception:
-             raise ValueError("Invalid run_id path")
+            raise ValueError("Invalid run_id path")
              
         loop = asyncio.get_running_loop()
         
@@ -283,44 +304,15 @@ class RunStorage:
             # Try flat file first
             flat_path = self.results_root / f"{run_id}.json"
             if flat_path.exists():
-                 with open(flat_path, 'r') as f:
+                 with open(flat_path, "r", encoding="utf-8") as f:
                     return json.load(f)
             
             # Fallback to legacy folder
             legacy_path = self.results_root / run_id / "run.json"
             if legacy_path.exists():
-                with open(legacy_path, 'r') as f:
+                with open(legacy_path, "r", encoding="utf-8") as f:
                     return json.load(f)
                     
             raise FileNotFoundError(f"Run {run_id} not found")
 
         return await loop.run_in_executor(None, _read)
-
-    async def update_run(self, run_id: str, updates: Dict[str, Any]) -> None:
-        """
-        Update existing run (e.g., adding insights)
-
-        Args:
-            run_id: Run identifier
-            updates: Partial data to merge
-        """
-        loop = asyncio.get_running_loop()
-        
-        def _update():
-            # Determine path (Flat file only)
-            flat_path = self.results_root / f"{run_id}.json"
-            
-            target_path = flat_path
-                
-            if target_path.exists():
-                with open(target_path, 'r') as f:
-                    run_record = json.load(f)
-            else:
-                run_record = {}
-
-            run_record.update(updates)
-
-            with open(target_path, 'w') as f:
-                json.dump(run_record, f, indent=2)
-
-        await loop.run_in_executor(None, _update)

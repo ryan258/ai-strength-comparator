@@ -1,121 +1,133 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
-from lib.query_processor import (
-    _extract_choice_from_classifier_output,
-    _infer_option_from_text,
-    QueryProcessor,
-    RunConfig,
-    parse_trolley_response,
-    render_options_template,
-)
+import pytest
+
+from lib.query_processor import QueryProcessor, RunConfig, evaluate_capability_response
 
 
-def test_render_options_template_appends_strict_single_choice_contract() -> None:
-    paradox = {
-        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
-        "options": [
-            {"id": 1, "label": "Alpha", "description": "Do alpha."},
-            {"id": 2, "label": "Beta", "description": "Do beta."},
-        ],
+class DummyAIService:
+    def __init__(self, responses: list[str], fail_on_calls: set[int] | None = None) -> None:
+        self._responses = responses
+        self._fail_on_calls = fail_on_calls or set()
+        self.call_count = 0
+
+    async def get_model_response(
+        self,
+        model_name: str,
+        prompt: str,
+        system_prompt: str = "",
+        params: dict[str, Any] | None = None,
+        retry_count: int = 0,
+    ) -> str:
+        self.call_count += 1
+        if self.call_count in self._fail_on_calls:
+            raise RuntimeError(f"simulated failure {self.call_count}")
+        return self._responses[self.call_count - 1]
+
+
+def _capability_fixture() -> dict[str, Any]:
+    return {
+        "id": "cap-1",
+        "type": "capability",
+        "category": "Reasoning",
+        "promptTemplate": "Reply with alpha.",
+        "evaluation": {
+            "required": [r"alpha"],
+            "forbidden": [r"forbidden"],
+            "pass_threshold": 0.8,
+        },
     }
 
-    prompt, resolved_options = render_options_template(paradox)
 
-    assert len(resolved_options) == 2
-    assert "**Output Contract (Strict):**" in prompt
-    assert "`{1}`" in prompt
-    assert "`{2}`" in prompt
-    assert '"{1} or {2}"' in prompt
-
-
-def test_parse_trolley_response_marks_multiple_tokens_as_undecided() -> None:
-    parsed = parse_trolley_response("{1} or {2} depends on context", option_count=4)
-
-    assert parsed["decisionToken"] is None
-    assert parsed["optionId"] is None
-    assert parsed["explanation"] == "{1} or {2} depends on context"
-
-
-def test_parse_trolley_response_keeps_single_token() -> None:
-    parsed = parse_trolley_response("{3} Targeted action is proportional.", option_count=4)
-
-    assert parsed["decisionToken"] == "{3}"
-    assert parsed["optionId"] == 3
-    assert parsed["explanation"] == "Targeted action is proportional."
-
-
-def test_parse_trolley_response_accepts_repeated_same_token() -> None:
-    parsed = parse_trolley_response("I choose {2}. Final answer remains {2}.", option_count=3)
-
-    assert parsed["decisionToken"] == "{2}"
-    assert parsed["optionId"] == 2
-
-
-def test_infer_option_from_text_detects_explicit_commitment() -> None:
-    response = (
-        "After weighing tradeoffs, I think a balanced policy is best. "
-        "So I'd choose {2}."
-    )
-    assert _infer_option_from_text(response, option_count=3) == 2
-
-
-def test_extract_choice_from_classifier_output() -> None:
-    assert _extract_choice_from_classifier_output("2", option_count=4) == 2
-    assert _extract_choice_from_classifier_output("{3}", option_count=4) == 3
-    assert _extract_choice_from_classifier_output("0", option_count=4) is None
-
-
-def test_query_processor_ai_classifier_fallback_infers_option() -> None:
-    class DummyAIService:
-        def __init__(self) -> None:
-            self.call_count = 0
-
-        async def get_model_response(
-            self,
-            model_name: str,
-            prompt: str,
-            system_prompt: str = "",
-            params=None,
-            retry_count: int = 0,
-        ) -> str:
-            self.call_count += 1
-            if "Classify the FINAL chosen option" in prompt:
-                return "2"
-            return "I am evaluating all options and balancing tradeoffs."
-
-    dummy_ai = DummyAIService()
-    qp = QueryProcessor(
-        dummy_ai,  # type: ignore[arg-type]
-        concurrency_limit=1,
-        choice_inference_model="classifier/model",
-    )
-    paradox = {
-        "id": "test_paradox",
-        "type": "trolley",
-        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
-        "options": [
-            {"id": 1, "label": "A", "description": "Option A"},
-            {"id": 2, "label": "B", "description": "Option B"},
-            {"id": 3, "label": "C", "description": "Option C"},
-        ],
-    }
+def test_execute_run_scores_capability_iterations() -> None:
+    dummy_ai = DummyAIService(["alpha success", "forbidden text"])
+    qp = QueryProcessor(dummy_ai, concurrency_limit=1)
 
     run_data = asyncio.run(
         qp.execute_run(
             RunConfig(
-                modelName="generator/model",
-                paradox=paradox,
-                iterations=1,
+                modelName="test/model",
+                capability=_capability_fixture(),
+                iterations=2,
+                systemPrompt="Be concise.",
                 params={"max_tokens": 200},
             )
         )
     )
 
-    response = run_data["responses"][0]
-    assert response["decisionToken"] == "{2}"
-    assert response["optionId"] == 2
-    assert response["inferred"] is True
-    assert response["inferenceMethod"] == "ai_classifier"
-    assert dummy_ai.call_count == 2
+    assert run_data["capabilityType"] == "capability"
+    assert run_data["summary"]["total"] == 2
+    assert run_data["summary"]["passCount"] == 1
+    assert run_data["summary"]["passRate"] == 50.0
+    assert run_data["responses"][0]["passed"] is True
+    assert run_data["responses"][1]["passed"] is False
+    assert run_data["iterationCount"] == 2
+    assert run_data["systemPrompt"] == "Be concise."
+    assert run_data["params"]["max_tokens"] == 200
+
+
+def test_execute_run_rejects_non_capability_types() -> None:
+    dummy_ai = DummyAIService(["irrelevant"])
+    qp = QueryProcessor(dummy_ai, concurrency_limit=1)
+
+    with pytest.raises(ValueError, match="Unsupported capability type: legacy"):
+        asyncio.run(
+            qp.execute_run(
+                RunConfig(
+                    modelName="test/model",
+                    capability={"id": "bad", "type": "legacy", "promptTemplate": "..."},
+                    iterations=1,
+                )
+            )
+        )
+
+
+def test_execute_run_records_iteration_errors_as_failed_scores() -> None:
+    dummy_ai = DummyAIService(["alpha success", "ignored"], fail_on_calls={2})
+    qp = QueryProcessor(dummy_ai, concurrency_limit=1)
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="test/model",
+                capability=_capability_fixture(),
+                iterations=2,
+            )
+        )
+    )
+
+    assert run_data["summary"]["total"] == 2
+    assert run_data["summary"]["passCount"] == 1
+    assert run_data["responses"][1]["passed"] is False
+    assert run_data["responses"][1]["score"] == 0.0
+    assert "simulated failure 2" in run_data["responses"][1]["error"]
+
+
+def test_evaluate_response_is_case_sensitive_by_default() -> None:
+    evaluation = {
+        "required": [r"\AYES\Z"],
+        "forbidden": [],
+        "pass_threshold": 1.0,
+    }
+
+    result = evaluate_capability_response("yes", evaluation)
+
+    assert result["passed"] is False
+    assert result["score"] == 0.0
+
+
+def test_evaluate_response_supports_ignore_case_override() -> None:
+    evaluation = {
+        "required": [r"\AYES\Z"],
+        "forbidden": [],
+        "pass_threshold": 1.0,
+        "ignore_case": True,
+    }
+
+    result = evaluate_capability_response("yes", evaluation)
+
+    assert result["passed"] is True
+    assert result["score"] == 1.0

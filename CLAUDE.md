@@ -4,12 +4,11 @@ Guidance for coding agents working in this repository.
 
 ## Project Snapshot
 
-AI Ethics Comparator is a FastAPI + Jinja2 + HTMX application for running repeated LLM evaluations on trolley-style ethical scenarios.
+AI Strength Comparator is a FastAPI + Jinja2 + HTMX application for running repeated LLM evaluations on deterministic capability tests.
 
 Current behavior:
 
-- Scenario type: `trolley` only
-- Options per paradox: 2-4
+- Capability types: `capability` (deterministic scoring)
 - Storage: flat JSON files in `results/`
 - Strict run IDs: `<base>-NNN`
 
@@ -56,13 +55,14 @@ pytest
 
 - `config.py` - typed app config/env loading
 - `validation.py` - Pydantic request validation
-- `ai_service.py` - OpenRouter client + retry/backoff
-- `query_processor.py` - iteration orchestration + token parsing + aggregation
+- `ai_service.py` - OpenRouter client + retry/backoff + typed exceptions
+- `query_processor.py` - iteration orchestration + deterministic scoring + aggregation
 - `analysis.py` - analyst prompt compilation + insight parsing
 - `storage.py` - run persistence + strict ID migration
 - `view_models.py` - template-facing data prep + safe markdown filter
 - `reporting.py` - PDF generation
-- `paradoxes.py` - paradox loading/validation
+- `capabilities.py` - capability loading/validation
+- `strength_profile.py` - strength profile aggregation + category filtering
 
 ### UI
 
@@ -99,8 +99,8 @@ All routes that access a specific run validate this pattern.
   "runId": "model-001",
   "timestamp": "2026-01-01T00:00:00+00:00",
   "modelName": "provider/model",
-  "paradoxId": "scenario_id",
-  "paradoxType": "trolley",
+  "capabilityId": "scenario_id",
+  "capabilityType": "capability",
   "prompt": "Rendered prompt text",
   "iterationCount": 20,
   "params": {
@@ -111,24 +111,23 @@ All routes that access a specific run validate this pattern.
     "presence_penalty": 0,
     "seed": 123
   },
-  "options": [
-    {"id": 1, "label": "Option 1", "description": "..."},
-    {"id": 2, "label": "Option 2", "description": "..."}
-  ],
   "summary": {
     "total": 20,
-    "options": [
-      {"id": 1, "count": 14, "percentage": 70.0},
-      {"id": 2, "count": 6, "percentage": 30.0}
-    ],
-    "undecided": {"count": 0, "percentage": 0.0}
+    "averageScore": 0.9,
+    "minScore": 0.5,
+    "maxScore": 1.0,
+    "passCount": 18,
+    "passRate": 90.0,
+    "passThreshold": 0.8
   },
   "responses": [
     {
       "iteration": 1,
-      "decisionToken": "{1}",
-      "optionId": 1,
-      "explanation": "...",
+      "score": 0.9,
+      "passed": true,
+      "matchedRequired": ["..."],
+      "missingRequired": [],
+      "matchedForbidden": [],
       "raw": "...",
       "timestamp": "2026-01-01T00:00:01+00:00"
     }
@@ -137,7 +136,7 @@ All routes that access a specific run validate this pattern.
     {
       "timestamp": "2026-01-01T00:10:00+00:00",
       "analystModel": "provider/analyst",
-      "content": {"legacy_text": "..."}
+      "content": {"executive_summary": "...", "strengths": [], "weaknesses": [], "reliability": [], "recommendations": []}
     }
   ]
 }
@@ -147,10 +146,10 @@ All routes that access a specific run validate this pattern.
 
 - `GET /` - full app page
 - `GET /health` - health/version metadata
-- `GET /api/paradoxes` - all paradoxes
-- `GET /api/fragments/paradox-details` - paradox detail partial
+- `GET /api/capabilities` - all capabilities
+- `GET /api/fragments/capability-details` - capability detail partial
 - `POST /api/query` - execute run
-- `POST /api/insight` - generate insight JSON response
+- `POST /api/profile` - execute strength profile across capabilities
 - `GET /api/runs` - list run metadata
 - `GET /api/runs/{run_id}` - fetch one run
 - `POST /api/runs/{run_id}/analyze` - render analysis partial
@@ -164,6 +163,9 @@ All routes that access a specific run validate this pattern.
 - strict run ID validation checks
 - legacy run ID migration check
 - analysis error escaping check
+- capability alias/endpoint checks
+- strength profile building + filtering
+- query processor parsing + scoring
 
 Run with `pytest`.
 
@@ -174,3 +176,4 @@ Run with `pytest`.
 - For new storage migrations, keep operations idempotent.
 - Prefer explicit dataclasses/config objects for new integrations.
 - Do not hardcode secrets, endpoints, or model IDs in code.
+- Use typed exceptions from `lib/ai_service.py` for error handling in routes.
