@@ -1,3 +1,5 @@
+logs
+
 # --- Python ---
 __pycache__/
 *.py[cod]
@@ -187,3 +189,4 @@ Temporary Items
 results/
 *.pdf
 debug_*.py
+.gitnexus

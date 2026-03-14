@@ -9,11 +9,18 @@
         • {{ comparison.iterations }} iteration{% if comparison.iterations != 1 %}s{% endif %}
       </span>
       <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
-        Categories:
-        {% if comparison.categories %}
-          {{ comparison.categories | join(", ") }}
+        {% if comparison.comparisonScope == "capability" and comparison.capabilityTitle %}
+          Capability: {{ comparison.capabilityTitle }}
+          {% if comparison.categories %}
+            • {{ comparison.categories | join(", ") }}
+          {% endif %}
         {% else %}
-          All
+          Categories:
+          {% if comparison.categories %}
+            {{ comparison.categories | join(", ") }}
+          {% else %}
+            All
+          {% endif %}
         {% endif %}
       </div>
     </div>

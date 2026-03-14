@@ -18,3 +18,23 @@ def test_retry_delay_must_be_integer(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="AI_RETRY_DELAY must be an integer"):
         AppConfig()
+
+
+def test_required_string_settings_reject_none() -> None:
+    with pytest.raises(ValidationError):
+        AppConfig(
+            OPENROUTER_API_KEY="test-key",
+            APP_BASE_URL="http://localhost:8000",
+            OPENROUTER_BASE_URL=None,
+        )
+
+
+def test_validate_secrets_rejects_empty_required_strings() -> None:
+    config = AppConfig(
+        OPENROUTER_API_KEY="test-key",
+        APP_BASE_URL="http://localhost:8000",
+        OPENROUTER_BASE_URL="",
+    )
+
+    with pytest.raises(ValueError, match="OPENROUTER_BASE_URL not found"):
+        config.validate_secrets()

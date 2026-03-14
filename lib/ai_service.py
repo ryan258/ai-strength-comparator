@@ -1,7 +1,5 @@
 """
-AI Service - Arsenal Module
-OpenRouter client with retry logic and dual API support
-Copy-paste ready: Just provide config
+AI service client for OpenRouter with retry handling.
 """
 
 import asyncio
@@ -40,6 +38,15 @@ class AIModelNotFoundError(AIServiceError):
 class AIEmptyResponseError(AIServiceError):
     """Raised when the model returns no usable text content."""
 
+
+FATAL_AI_ERROR_TYPES = (
+    AIModelNotFoundError,
+    AIAuthenticationError,
+    AIBillingError,
+    AIRateLimitError,
+)
+
+
 class AIService:
     """AI Service for OpenRouter API with exponential backoff retry"""
 
@@ -54,6 +61,8 @@ class AIService:
     ) -> None:
         if not api_key:
             raise ValueError("API key is required")
+        if not base_url:
+            raise ValueError("base_url is required")
         if max_retries < 0:
             raise ValueError("max_retries must be >= 0")
         if retry_delay < 0:
@@ -287,9 +296,5 @@ class AIService:
             raise AIServiceError(
                 f"API error after {self.max_retries} retries: {error_msg}"
             )
-
-        # Preserve explicit model-output failures without wrapping.
-        if isinstance(error, AIEmptyResponseError):
-            raise error
 
         raise AIServiceError(f"Failed to retrieve response: {error_msg}")

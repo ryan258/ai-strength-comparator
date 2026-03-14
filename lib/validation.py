@@ -10,6 +10,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+MODEL_NAME_REGEX = r"^[a-z0-9\-_/:.]+$"
+MODEL_NAME_PATTERN = re.compile(MODEL_NAME_REGEX, re.IGNORECASE)
+
 
 class GenerationParams(BaseModel):
     """Generation parameters for reproducibility."""
@@ -41,7 +44,7 @@ class QueryRequest(BaseModel):
     @field_validator("model_name")
     @classmethod
     def validate_model_name(cls, value: str) -> str:
-        if not re.match(r"^[a-z0-9\-_/:.]+$", value, re.IGNORECASE):
+        if not MODEL_NAME_PATTERN.fullmatch(value):
             raise ValueError("Invalid model name format")
         return value
 
@@ -102,7 +105,7 @@ class StrengthProfileRequest(BaseModel):
     @field_validator("model_name")
     @classmethod
     def validate_model_name(cls, value: str) -> str:
-        if not re.match(r"^[a-z0-9\-_/:.]+$", value, re.IGNORECASE):
+        if not MODEL_NAME_PATTERN.fullmatch(value):
             raise ValueError("Invalid model name format")
         return value
 
@@ -161,6 +164,16 @@ class ModelComparisonRequest(BaseModel):
 
     models: Optional[List[str]] = Field(default=None)
     iterations: Optional[int] = Field(default=1, ge=1)
+    comparison_scope: Literal["categories", "capability"] = Field(
+        default="categories",
+        alias="comparisonScope",
+    )
+    capability_id: Optional[str] = Field(
+        default=None,
+        alias="capabilityId",
+        min_length=1,
+        max_length=100,
+    )
     categories: Optional[List[str]] = Field(default=None)
     system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
     params: Optional[GenerationParams] = None
@@ -171,7 +184,6 @@ class ModelComparisonRequest(BaseModel):
         if value is None:
             return None
 
-        pattern = re.compile(r"^[a-z0-9\-_/:.]+$", re.IGNORECASE)
         clean: List[str] = []
         seen: set[str] = set()
         for item in value:
@@ -180,7 +192,7 @@ class ModelComparisonRequest(BaseModel):
             model_id = item.strip()
             if not model_id:
                 continue
-            if not pattern.match(model_id):
+            if not MODEL_NAME_PATTERN.fullmatch(model_id):
                 raise ValueError(f"Invalid model name format: {model_id}")
             if model_id in seen:
                 continue
@@ -197,6 +209,15 @@ class ModelComparisonRequest(BaseModel):
 
         clean = [item.strip() for item in value if isinstance(item, str) and item.strip()]
         return clean or None
+
+    @field_validator("capability_id")
+    @classmethod
+    def validate_capability_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        if not re.match(r"^[a-z0-9_-]+$", value, re.IGNORECASE):
+            raise ValueError("Invalid capability ID format")
+        return value
 
     @model_validator(mode="before")
     @classmethod
@@ -215,6 +236,9 @@ class ModelComparisonRequest(BaseModel):
         if isinstance(raw_categories, str):
             categories = [item.strip() for item in raw_categories.split(",") if item.strip()]
             parsed["categories"] = categories or None
+
+        if parsed.get("capabilityId") == "":
+            parsed["capabilityId"] = None
 
         params = parsed.get("params", {})
         if not isinstance(params, dict):
@@ -241,6 +265,12 @@ class ModelComparisonRequest(BaseModel):
 
         return parsed
 
+    @model_validator(mode="after")
+    def validate_scope_requirements(self) -> "ModelComparisonRequest":
+        if self.comparison_scope == "capability" and not self.capability_id:
+            raise ValueError("capabilityId is required for capability comparisons")
+        return self
+
 
 class AggregateInsightRequest(BaseModel):
     """Request payload for profile/comparison-level insight synthesis."""
@@ -260,7 +290,7 @@ class AggregateInsightRequest(BaseModel):
         normalized = value.strip()
         if not normalized:
             return None
-        if not re.match(r"^[a-z0-9\-_/:.]+$", normalized, re.IGNORECASE):
+        if not MODEL_NAME_PATTERN.fullmatch(normalized):
             raise ValueError("Invalid model name format")
         return normalized
 

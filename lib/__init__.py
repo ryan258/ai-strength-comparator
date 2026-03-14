@@ -1,1 +1,1 @@
-"""Arsenal Modules - Copy-Paste Ready Components"""
+"""Core library modules for the AI Strength Comparator."""

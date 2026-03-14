@@ -8,7 +8,6 @@ import asyncio
 import logging
 import os
 import random
-import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -25,11 +24,23 @@ from fastapi.templating import Jinja2Templates
 from lib.ai_service import (
     AIAuthenticationError,
     AIBillingError,
+    AIModelNotFoundError,
     AIRateLimitError,
     AIService,
     AIServiceError,
 )
 from lib.analysis import AggregateAnalysisConfig, AnalysisConfig, AnalysisEngine
+from lib.benchmarking import (
+    BenchmarkOrchestrator,
+    BenchmarkExecutionFailedError,
+    CapabilityBatchConfig,
+    ComparisonExecutionConfig,
+    available_capability_categories,
+    configured_model_name_lookup,
+    resolve_comparison_capabilities,
+    resolve_model_ids_for_comparison,
+    resolve_selected_capabilities,
+)
 from lib.capabilities import (
     extract_capability_text,
     get_capability_by_id,
@@ -37,11 +48,11 @@ from lib.capabilities import (
 )
 from lib.config import AppConfig
 from lib.query_processor import QueryProcessor, RunConfig
-from lib.reporting import ReportGenerator
+from lib.reporting import ReportGenerationUnavailableError, ReportGenerator
 from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN
-from lib.strength_profile import build_strength_profile, filter_capability_tests
 from lib.validation import (
     AggregateInsightRequest,
+    MODEL_NAME_PATTERN,
     ModelComparisonRequest,
     QueryRequest,
     StrengthProfileRequest,
@@ -56,7 +67,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_NAME_PATTERN = re.compile(r"^[a-z0-9\-_/:.]+$", re.IGNORECASE)
 RUN_ID_PATTERN = STRICT_RUN_ID_PATTERN
 
 
@@ -65,6 +75,7 @@ class AppServices:
     config: AppConfig
     storage: RunStorage
     query_processor: QueryProcessor
+    benchmark_orchestrator: BenchmarkOrchestrator
     analysis_engine: AnalysisEngine
     report_generator: ReportGenerator
     templates: Jinja2Templates
@@ -129,38 +140,6 @@ async def _persist_new_run(
     raise RuntimeError("Failed to persist run after repeated run_id collisions")
 
 
-def _resolve_model_ids_for_comparison(
-    requested_models: Optional[list[str]],
-    configured_models: list[Any],
-) -> list[str]:
-    """
-    Resolve model IDs for comparison.
-
-    Priority:
-    - explicit request.models (if provided)
-    - configured AppConfig.AVAILABLE_MODELS
-    """
-    if requested_models:
-        return requested_models
-
-    resolved: list[str] = []
-    for model in configured_models:
-        model_id = getattr(model, "id", None)
-        if isinstance(model_id, str) and model_id.strip():
-            resolved.append(model_id.strip())
-    return resolved
-
-
-def _model_name_lookup(config: AppConfig) -> dict[str, str]:
-    lookup: dict[str, str] = {}
-    for model in config.AVAILABLE_MODELS:
-        model_id = getattr(model, "id", None)
-        model_name = getattr(model, "name", None)
-        if isinstance(model_id, str) and model_id and isinstance(model_name, str) and model_name:
-            lookup[model_id] = model_name
-    return lookup
-
-
 def _new_insight_dom_id(prefix: str) -> str:
     milliseconds = int(datetime.now(timezone.utc).timestamp() * 1000)
     return f"{prefix}-{milliseconds}-{random.randint(1000, 9999)}"
@@ -209,6 +188,15 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             ai_service,
             concurrency_limit=config.AI_CONCURRENCY_LIMIT,
         )
+        benchmark_orchestrator = BenchmarkOrchestrator(
+            query_processor=query_processor,
+            persist_run=lambda model_name, run_data: _persist_new_run(
+                storage,
+                model_name,
+                run_data,
+            ),
+            concurrency_limit=config.AI_CONCURRENCY_LIMIT,
+        )
         analysis_engine = AnalysisEngine(
             ai_service,
             prompt_template_path=analysis_prompt_path,
@@ -219,6 +207,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             config=config,
             storage=storage,
             query_processor=query_processor,
+            benchmark_orchestrator=benchmark_orchestrator,
             analysis_engine=analysis_engine,
             report_generator=report_generator,
             templates=templates,
@@ -286,13 +275,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 initial_capability.get("promptTemplate", "")
             )
 
-        capability_categories = sorted(
-            {
-                str(item.get("category", "General"))
-                for item in capabilities
-                if item.get("type") == "capability" and str(item.get("category", "")).strip()
-            }
-        )
+        capability_categories = available_capability_categories(capabilities)
 
         return services.templates.TemplateResponse(
             request,
@@ -423,6 +406,8 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return run_data
         except HTTPException:
             raise
+        except AIModelNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Requested model not found.") from exc
         except AIAuthenticationError as exc:
             raise HTTPException(status_code=401, detail="Invalid API key or unauthorized.") from exc
         except AIRateLimitError as exc:
@@ -445,42 +430,10 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         config = services.config
         try:
             capabilities = load_capabilities(services.capabilities_path)
-            available_categories = sorted(
-                {
-                    str(item.get("category", "General"))
-                    for item in capabilities
-                    if item.get("type") == "capability" and str(item.get("category", "")).strip()
-                }
-            )
-            if profile_request.categories:
-                valid_categories = {category.lower(): category for category in available_categories}
-                invalid_categories = sorted(
-                    {
-                        category
-                        for category in profile_request.categories
-                        if category.lower() not in valid_categories
-                    }
-                )
-                if invalid_categories:
-                    invalid_csv = ", ".join(invalid_categories)
-                    valid_csv = ", ".join(available_categories) or "none"
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"Invalid categories: {invalid_csv}. "
-                            f"Valid categories: {valid_csv}."
-                        ),
-                    )
-
-            selected_capabilities = filter_capability_tests(
+            selected_capabilities = resolve_selected_capabilities(
                 capabilities,
                 profile_request.categories,
             )
-            if not selected_capabilities:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No capability tests found for the selected filters.",
-                )
 
             req_iterations = _resolve_iterations(
                 profile_request.iterations,
@@ -488,74 +441,28 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 default=1,
             )
 
-            capability_concurrency = max(1, min(config.AI_CONCURRENCY_LIMIT, len(selected_capabilities)))
-            capability_semaphore = asyncio.Semaphore(capability_concurrency)
-
-            async def run_profile_capability(capability: dict[str, Any]) -> dict[str, Any]:
-                async with capability_semaphore:
-                    run_config = RunConfig(
-                        modelName=profile_request.model_name,
-                        capability=capability,
-                        iterations=req_iterations,
-                        systemPrompt=profile_request.system_prompt or "",
-                        params=profile_request.params.model_dump() if profile_request.params else {},
-                    )
-                    run_data = await services.query_processor.execute_run(run_config)
-                    await _persist_new_run(
-                        services.storage,
-                        profile_request.model_name,
-                        run_data,
-                    )
-                    return run_data
-
-            tasks = [run_profile_capability(capability) for capability in selected_capabilities]
-            run_results = await asyncio.gather(*tasks, return_exceptions=True)
-            runs: list[dict[str, Any]] = []
-            errors: list[dict[str, str]] = []
-            for capability, run_result in zip(selected_capabilities, run_results):
-                if isinstance(run_result, Exception):
-                    error_message = str(run_result).strip() or "Unknown error"
-                    error_info = {
-                        "capabilityId": str(capability.get("id", "unknown")),
-                        "errorType": type(run_result).__name__,
-                        "message": error_message,
-                    }
-                    logger.error(
-                        "Profile capability run failed for %s: %s",
-                        capability.get("id"),
-                        run_result,
-                    )
-                    errors.append(error_info)
-                    continue
-                runs.append(run_result)
-
-            if not runs:
-                raise HTTPException(
-                    status_code=500,
-                    detail={
-                        "message": "All capability runs failed.",
-                        "errors": errors,
-                    },
+            profile_result = await services.benchmark_orchestrator.execute_profile(
+                CapabilityBatchConfig(
+                    model_name=profile_request.model_name,
+                    capabilities=selected_capabilities,
+                    iterations=req_iterations,
+                    system_prompt=profile_request.system_prompt or "",
+                    params=profile_request.params.model_dump() if profile_request.params else {},
                 )
-
-            profile = build_strength_profile(
-                model_name=profile_request.model_name,
-                runs=runs,
-                capabilities=selected_capabilities,
             )
-            partial = bool(errors)
-            insight_payload = dict(profile)
-            insight_payload["partial"] = partial
-            insight_payload["errors"] = errors
+
+            insight_payload = dict(profile_result.profile)
+            insight_payload["partial"] = profile_result.partial
+            insight_payload["errors"] = profile_result.errors
 
             if request.headers.get("HX-Request"):
                 return services.templates.TemplateResponse(
                     request,
                     "partials/profile_item.html",
                     {
-                        "profile": profile,
-                        "partial": partial,
-                        "errors": errors,
+                        "profile": profile_result.profile,
+                        "partial": profile_result.partial,
+                        "errors": profile_result.errors,
                         "config_analyst_model": config.ANALYST_MODEL,
                         "insight_payload": insight_payload,
                         "insight_content_id": _new_insight_dom_id("aggregate-analysis-content"),
@@ -563,13 +470,28 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 )
 
             return {
-                "profile": profile,
-                "runs": runs,
-                "partial": partial,
-                "errors": errors,
+                "profile": profile_result.profile,
+                "runs": profile_result.runs,
+                "partial": profile_result.partial,
+                "errors": profile_result.errors,
             }
         except HTTPException:
             raise
+        except BenchmarkExecutionFailedError as exc:
+            raise HTTPException(status_code=500, detail=exc.detail) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except AIModelNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Requested model not found.") from exc
+        except AIAuthenticationError as exc:
+            raise HTTPException(status_code=401, detail="Invalid API key or unauthorized.") from exc
+        except AIRateLimitError as exc:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.") from exc
+        except AIBillingError as exc:
+            raise HTTPException(status_code=402, detail="Insufficient API credits.") from exc
+        except AIServiceError as exc:
+            logger.error("Profile execution service failure: %s", exc)
+            raise HTTPException(status_code=500, detail="Internal server error") from exc
         except Exception as exc:
             logger.error("Profile execution failed: %s", exc)
             raise HTTPException(status_code=500, detail="Internal server error") from exc
@@ -583,44 +505,14 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         config = services.config
         try:
             capabilities = load_capabilities(services.capabilities_path)
-            available_categories = sorted(
-                {
-                    str(item.get("category", "General"))
-                    for item in capabilities
-                    if item.get("type") == "capability" and str(item.get("category", "")).strip()
-                }
-            )
-            if comparison_request.categories:
-                valid_categories = {category.lower(): category for category in available_categories}
-                invalid_categories = sorted(
-                    {
-                        category
-                        for category in comparison_request.categories
-                        if category.lower() not in valid_categories
-                    }
-                )
-                if invalid_categories:
-                    invalid_csv = ", ".join(invalid_categories)
-                    valid_csv = ", ".join(available_categories) or "none"
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"Invalid categories: {invalid_csv}. "
-                            f"Valid categories: {valid_csv}."
-                        ),
-                    )
-
-            selected_capabilities = filter_capability_tests(
+            selected_capabilities, selected_capability = resolve_comparison_capabilities(
                 capabilities,
+                comparison_request.comparison_scope,
                 comparison_request.categories,
+                comparison_request.capability_id,
             )
-            if not selected_capabilities:
-                raise HTTPException(
-                    status_code=400,
-                    detail="No capability tests found for the selected filters.",
-                )
 
-            model_ids = _resolve_model_ids_for_comparison(
+            model_ids = resolve_model_ids_for_comparison(
                 comparison_request.models,
                 list(config.AVAILABLE_MODELS),
             )
@@ -636,143 +528,29 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 default=1,
             )
 
-            params = comparison_request.params.model_dump() if comparison_request.params else {}
-            system_prompt = comparison_request.system_prompt or ""
-            total_tests = len(selected_capabilities)
-
-            name_lookup = _model_name_lookup(config)
-
-            results: list[dict[str, Any]] = []
-            for model_id in model_ids:
-                capability_concurrency = max(
-                    1,
-                    min(config.AI_CONCURRENCY_LIMIT, len(selected_capabilities)),
-                )
-                capability_semaphore = asyncio.Semaphore(capability_concurrency)
-
-                async def run_profile_capability(capability: dict[str, Any]) -> dict[str, Any]:
-                    async with capability_semaphore:
-                        run_config = RunConfig(
-                            modelName=model_id,
-                            capability=capability,
-                            iterations=req_iterations,
-                            systemPrompt=system_prompt,
-                            params=params,
-                        )
-                        run_data = await services.query_processor.execute_run(run_config)
-                        await _persist_new_run(
-                            services.storage,
-                            model_id,
-                            run_data,
-                        )
-                        return run_data
-
-                tasks = [run_profile_capability(capability) for capability in selected_capabilities]
-                run_results = await asyncio.gather(*tasks, return_exceptions=True)
-                runs: list[dict[str, Any]] = []
-                errors: list[dict[str, str]] = []
-                for capability, run_result in zip(selected_capabilities, run_results):
-                    if isinstance(run_result, Exception):
-                        error_message = str(run_result).strip() or "Unknown error"
-                        error_info = {
-                            "capabilityId": str(capability.get("id", "unknown")),
-                            "errorType": type(run_result).__name__,
-                            "message": error_message,
-                        }
-                        logger.error(
-                            "Comparison capability run failed for %s (%s): %s",
-                            model_id,
-                            capability.get("id"),
-                            run_result,
-                        )
-                        errors.append(error_info)
-                        continue
-                    runs.append(run_result)
-
-                profile = build_strength_profile(
-                    model_name=model_id,
-                    runs=runs,
+            payload = await services.benchmark_orchestrator.execute_model_comparison(
+                ComparisonExecutionConfig(
+                    model_ids=model_ids,
                     capabilities=selected_capabilities,
+                    iterations=req_iterations,
+                    categories=(
+                        [
+                            category
+                            for category in [str(selected_capability.get("category", "")).strip()]
+                            if category
+                        ]
+                        if selected_capability is not None
+                        else (comparison_request.categories or [])
+                    ),
+                    model_names=configured_model_name_lookup(list(config.AVAILABLE_MODELS)),
+                    system_prompt=comparison_request.system_prompt or "",
+                    params=comparison_request.params.model_dump() if comparison_request.params else {},
                 )
-                coverage = (len(runs) / total_tests) if total_tests else 0.0
-                overall_score = float(profile.get("overallScore", 0.0) or 0.0)
-                adjusted_score = overall_score * coverage
-
-                results.append(
-                    {
-                        "modelId": model_id,
-                        "modelName": name_lookup.get(model_id, model_id),
-                        "profile": profile,
-                        "partial": bool(errors),
-                        "errors": errors,
-                        "coverage": coverage,
-                        "adjustedScore": adjusted_score,
-                        "testsRun": len(runs),
-                        "testsTotal": total_tests,
-                    }
-                )
-
-            if not results:
-                raise HTTPException(
-                    status_code=500,
-                    detail="All model comparisons failed.",
-                )
-
-            ranked = sorted(
-                results,
-                key=lambda item: (
-                    float(item.get("adjustedScore", 0.0) or 0.0),
-                    float(item.get("coverage", 0.0) or 0.0),
-                    float(item.get("profile", {}).get("overallScore", 0.0) or 0.0),
-                ),
-                reverse=True,
             )
-            for idx, item in enumerate(ranked, start=1):
-                item["rank"] = idx
-
-            category_leaders: list[dict[str, Any]] = []
-            categories = sorted(
-                {
-                    str(cap.get("category", "General") or "General")
-                    for cap in selected_capabilities
-                    if str(cap.get("category", "")).strip()
-                }
-            ) or ["General"]
-
-            for category in categories:
-                best: Optional[dict[str, Any]] = None
-                for item in ranked:
-                    breakdown = item.get("profile", {}).get("categoryBreakdown", [])
-                    if not isinstance(breakdown, list):
-                        continue
-                    for entry in breakdown:
-                        if not isinstance(entry, dict):
-                            continue
-                        if str(entry.get("category", "")) != category:
-                            continue
-                        avg = entry.get("averageScore")
-                        score = float(avg) if isinstance(avg, (float, int)) else 0.0
-                        candidate = {
-                            "category": category,
-                            "modelName": item.get("modelName", item.get("modelId", "")),
-                            "modelId": item.get("modelId", ""),
-                            "averageScore": score,
-                            "strength": entry.get("strength", ""),
-                        }
-                        if best is None or score > float(best.get("averageScore", 0.0) or 0.0):
-                            best = candidate
-                if best is not None:
-                    category_leaders.append(best)
-
-            payload: dict[str, Any] = {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "iterations": req_iterations,
-                "categories": comparison_request.categories or [],
-                "modelsCompared": len(model_ids),
-                "testsPerModel": total_tests,
-                "rankings": ranked,
-                "categoryLeaders": category_leaders,
-            }
+            payload["comparisonScope"] = comparison_request.comparison_scope
+            if selected_capability is not None:
+                payload["capabilityId"] = str(selected_capability.get("id", ""))
+                payload["capabilityTitle"] = str(selected_capability.get("title", ""))
 
             if request.headers.get("HX-Request"):
                 return services.templates.TemplateResponse(
@@ -788,6 +566,21 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return payload
         except HTTPException:
             raise
+        except BenchmarkExecutionFailedError as exc:
+            raise HTTPException(status_code=500, detail=exc.detail) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except AIModelNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Requested model not found.") from exc
+        except AIAuthenticationError as exc:
+            raise HTTPException(status_code=401, detail="Invalid API key or unauthorized.") from exc
+        except AIRateLimitError as exc:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.") from exc
+        except AIBillingError as exc:
+            raise HTTPException(status_code=402, detail="Insufficient API credits.") from exc
+        except AIServiceError as exc:
+            logger.error("Model comparison service failure: %s", exc)
+            raise HTTPException(status_code=500, detail="Internal server error") from exc
         except Exception as exc:
             logger.error("Model comparison failed: %s", exc)
             raise HTTPException(status_code=500, detail="Internal server error") from exc
@@ -816,7 +609,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             )
 
         try:
-            if not model_to_use or not MODEL_NAME_PATTERN.match(model_to_use):
+            if not model_to_use or not MODEL_NAME_PATTERN.fullmatch(model_to_use):
                 if request.headers.get("HX-Request"):
                     return render_aggregate_error("Invalid analyst model name", status_code=400)
                 raise HTTPException(status_code=400, detail="Invalid analyst model name")
@@ -844,6 +637,11 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             if request.headers.get("HX-Request"):
                 return render_aggregate_error(str(exc), status_code=400)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except AIModelNotFoundError as exc:
+            logger.warning("Aggregate analysis model not found: %s", exc)
+            if request.headers.get("HX-Request"):
+                return render_aggregate_error("Requested analyst model not found.", status_code=404)
+            raise HTTPException(status_code=404, detail="Requested analyst model not found.") from exc
         except AIRateLimitError as exc:
             logger.warning("Aggregate analysis rate-limited: %s", exc)
             if request.headers.get("HX-Request"):
@@ -896,7 +694,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         try:
             form_data = await request.form()
             requested_analyst = form_data.get("analyst_model")
-            if requested_analyst and not MODEL_NAME_PATTERN.match(requested_analyst):
+            if requested_analyst and not MODEL_NAME_PATTERN.fullmatch(requested_analyst):
                 return render_analysis_error("Invalid model name format", status_code=400)
 
             run_data = await services.storage.get_run(run_id)
@@ -921,7 +719,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                     )
 
             model_to_use = requested_analyst or services.config.ANALYST_MODEL
-            if not model_to_use or not MODEL_NAME_PATTERN.match(model_to_use):
+            if not model_to_use or not MODEL_NAME_PATTERN.fullmatch(model_to_use):
                 raise ValueError("Invalid analyst model name")
 
             cfg = AnalysisConfig(run_data=run_data, analyst_model=model_to_use)
@@ -949,6 +747,9 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         except ValueError as exc:
             logger.warning("Analysis request validation failed for %s: %s", run_id, exc)
             return render_analysis_error(str(exc), status_code=400)
+        except AIModelNotFoundError as exc:
+            logger.warning("Analysis model not found for %s: %s", run_id, exc)
+            return render_analysis_error("Requested analyst model not found.", status_code=404)
         except AIRateLimitError as exc:
             logger.warning("Analysis rate-limited for %s: %s", run_id, exc)
             return render_analysis_error(
@@ -994,6 +795,8 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except ReportGenerationUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         except HTTPException:
             raise
         except Exception as exc:

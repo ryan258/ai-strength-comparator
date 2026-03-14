@@ -1,5 +1,4 @@
 """
-Query Processor - Arsenal Module
 Executes deterministic capability runs with regex-based scoring.
 """
 
@@ -10,7 +9,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from lib.ai_service import AIService
+from lib.ai_service import (
+    FATAL_AI_ERROR_TYPES,
+    AIService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +197,14 @@ class QueryProcessor:
             raise Exception(
                 f"Capability test exceeded {timeout_seconds}s timeout"
             ) from timeout_error
+
+        fatal_errors = [
+            response
+            for response in responses
+            if isinstance(response, FATAL_AI_ERROR_TYPES)
+        ]
+        if fatal_errors and len(fatal_errors) == len(responses):
+            raise fatal_errors[0]
 
         valid_responses: list[Dict[str, Any]] = []
         for i, response in enumerate(responses):

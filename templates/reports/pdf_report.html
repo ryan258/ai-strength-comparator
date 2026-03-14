@@ -96,12 +96,22 @@
         margin-bottom: 20px;
       }
 
+      .card-accent {
+        border-left-color: #a6accd;
+      }
+
+      .card-danger {
+        border-left-color: #e06c75;
+      }
+
       .scenario-text {
         margin-top: 10px;
         border: 1px solid #a6accd;
         padding: 12px;
         border-radius: 4px;
         font-style: italic;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
 
       .stats-grid {
@@ -131,6 +141,129 @@
         border-radius: 4px;
         padding: 16px;
         margin-bottom: 14px;
+      }
+
+      .subtle-text {
+        color: #a6accd;
+        font-size: 9pt;
+      }
+
+      .kv-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .kv-box {
+        border: 1px solid #a6accd;
+        border-radius: 4px;
+        padding: 10px;
+        flex: 1 1 30%;
+        min-width: 30%;
+      }
+
+      .kv-label {
+        display: block;
+        color: #a6accd;
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 6px;
+      }
+
+      .rule-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .rule-box {
+        border: 1px solid #a6accd;
+        border-radius: 4px;
+        padding: 12px;
+        flex: 1 1 45%;
+        min-width: 45%;
+      }
+
+      .rule-box ul {
+        margin-top: 8px;
+      }
+
+      .mono-block {
+        border: 1px solid #a6accd;
+        border-radius: 4px;
+        padding: 10px;
+        font-family: "SFMono-Regular", "Menlo", monospace;
+        font-size: 9pt;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.5;
+      }
+
+      .response-card {
+        border: 1px solid #a6accd;
+        border-radius: 4px;
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+
+      .response-header {
+        margin-bottom: 10px;
+      }
+
+      .response-title {
+        font-size: 11pt;
+        font-weight: bold;
+        color: #ebd2be;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border: 1px solid #a6accd;
+        border-radius: 999px;
+        font-size: 8pt;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-left: 6px;
+      }
+
+      .badge-pass {
+        border-color: #98c379;
+        color: #98c379;
+      }
+
+      .badge-fail {
+        border-color: #e06c75;
+        color: #e06c75;
+      }
+
+      .response-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .response-box {
+        flex: 1 1 30%;
+        min-width: 30%;
+        border: 1px solid #a6accd;
+        border-radius: 4px;
+        padding: 8px 10px;
+      }
+
+      .response-box strong {
+        display: block;
+        color: #a6accd;
+        font-size: 8.5pt;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+
+      .page-break {
+        page-break-before: always;
       }
 
       ul {
@@ -186,8 +319,15 @@
       <h2>Benchmark Results</h2>
       <div>
         <strong>Prompt</strong>
-        <div class="scenario-text">{{ run.prompt | truncate(500) }}</div>
+        <div class="scenario-text">{{ capability.promptTemplate or run.prompt }}</div>
       </div>
+
+      {% if run.systemPrompt %}
+      <div style="margin-top: 14px;">
+        <strong>Persona</strong>
+        <div class="scenario-text">{{ run.systemPrompt }}</div>
+      </div>
+      {% endif %}
 
       {% if run.summary and run.capabilityType == "capability" %}
       <div class="stats-grid">
@@ -211,14 +351,146 @@
       {% endif %}
     </div>
 
+    <div class="card card-accent">
+      <h2>Test Configuration</h2>
+      <div class="kv-grid">
+        <div class="kv-box">
+          <span class="kv-label">Iterations</span>
+          <div>{{ run.iterationCount or (run.summary.total if run.summary else 0) }}</div>
+        </div>
+        <div class="kv-box">
+          <span class="kv-label">Min Score</span>
+          <div>{{ "%.2f"|format(run.summary.minScore or 0) if run.summary else "0.00" }}</div>
+        </div>
+        <div class="kv-box">
+          <span class="kv-label">Max Score</span>
+          <div>{{ "%.2f"|format(run.summary.maxScore or 0) if run.summary else "0.00" }}</div>
+        </div>
+      </div>
+
+      {% if run.params %}
+      <div style="margin-top: 14px;">
+        <h3>Generation Parameters</h3>
+        <div class="mono-block">{{ params_json }}</div>
+      </div>
+      {% endif %}
+
+      {% if capability.evaluation %}
+      <div class="rule-grid">
+        <div class="rule-box">
+          <h3>Required Patterns</h3>
+          {% if capability.evaluation.required %}
+          <ul>
+            {% for pattern in capability.evaluation.required %}
+            <li><code>{{ pattern }}</code></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="subtle-text">No required patterns configured.</div>
+          {% endif %}
+        </div>
+
+        <div class="rule-box">
+          <h3>Forbidden Patterns</h3>
+          {% if capability.evaluation.forbidden %}
+          <ul>
+            {% for pattern in capability.evaluation.forbidden %}
+            <li><code>{{ pattern }}</code></li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="subtle-text">No forbidden patterns configured.</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if run.responses %}
+    <div class="card page-break">
+      <h2>Iteration Evidence</h2>
+      <div class="subtle-text">Each iteration includes the grader-visible output and score evidence.</div>
+
+      {% for response in run.responses %}
+      <div class="response-card">
+        <div class="response-header">
+          <span class="response-title">Iteration {{ response.iteration }}</span>
+          <span class="badge {% if response.passed %}badge-pass{% else %}badge-fail{% endif %}">
+            {% if response.passed %}Pass{% else %}Fail{% endif %}
+          </span>
+        </div>
+
+        <div class="response-grid">
+          <div class="response-box">
+            <strong>Score</strong>
+            <div>{{ "%.2f"|format(response.score or 0) }}</div>
+          </div>
+          <div class="response-box">
+            <strong>Timestamp</strong>
+            <div>{{ response.timestamp or "N/A" }}</div>
+          </div>
+          <div class="response-box">
+            <strong>Error</strong>
+            <div>{{ response.error or "None" }}</div>
+          </div>
+        </div>
+
+        {% if response.matchedRequired %}
+        <div style="margin-bottom: 10px;">
+          <h3>Matched Required</h3>
+          <ul>
+            {% for item in response.matchedRequired %}
+            <li><code>{{ item }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if response.missingRequired %}
+        <div style="margin-bottom: 10px;">
+          <h3>Missing Required</h3>
+          <ul>
+            {% for item in response.missingRequired %}
+            <li><code>{{ item }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if response.matchedForbidden %}
+        <div style="margin-bottom: 10px;">
+          <h3>Matched Forbidden</h3>
+          <ul>
+            {% for item in response.matchedForbidden %}
+            <li><code>{{ item }}</code></li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <h3>Raw Model Output</h3>
+        <div class="mono-block">{{ response.raw or "" }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
     {% if insight and insight.content %}
     {% set content = insight.content %}
     <div>
       <h2>Strength Analysis</h2>
 
+      {% if insight.analystModel or insight.timestamp %}
+      <div class="subtle-text" style="margin-bottom: 12px;">
+        {% if insight.analystModel %}Analyst model: {{ insight.analystModel }}{% endif %}
+        {% if insight.analystModel and insight.timestamp %} | {% endif %}
+        {% if insight.timestamp %}Generated: {{ insight.timestamp }}{% endif %}
+      </div>
+      {% endif %}
+
       {% if content.legacy_text %}
       <div class="analysis-card">
-        <p>{{ content.legacy_text }}</p>
+        <div class="mono-block">{{ content.legacy_text }}</div>
       </div>
       {% else %}
       <div class="analysis-card">
@@ -265,6 +537,6 @@
     </div>
     {% endif %}
 
-    <div class="footer">Generated by Anti-Gravity AI Strength Comparator</div>
+    <div class="footer">Generated by AI Strength Comparator</div>
   </body>
 </html>

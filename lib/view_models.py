@@ -130,7 +130,6 @@ class RunViewModel:
             "insight_model": insight_model,
             "run_data_json": run_data_json,
             "run_data_json_truncated": run_data_json_truncated,
-            "_raw_run": run_data,
         }
 
 

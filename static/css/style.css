@@ -15,12 +15,9 @@
   --border-color: var(--accent-primary);
   /* Use Lavender for borders */
 
-  /* N-Way Option Colors (mapped to strict Candlelight palette) */
+  /* Progress bar colors used by templates/partials/result_item.html */
   --option-1: #98c379; /* Green (approved) */
-  --option-2: #a6accd; /* Lavender (approved) */
-  --option-3: #ebd2be; /* Beige (approved) */
   --option-4: #e06c75; /* Red (approved) */
-  --undecided: #a6accd; /* Lavender (approved) */
 }
 
 * {
@@ -170,64 +167,6 @@ textarea:focus {
   width: auto;
 }
 
-/* Scenario Details */
-.scenario-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1rem;
-  font-size: 0.85rem;
-}
-
-.scenario-option {
-  background: var(--card-bg);
-  padding: 0.75rem;
-  border-radius: 4px;
-  border-left: 3px solid var(--accent-primary);
-}
-
-.scenario-option strong {
-  color: var(--accent-primary);
-}
-
-/* N-Way Dynamic Option Colors */
-.scenario-option.option-1 {
-  border-left-color: var(--option-1);
-}
-.scenario-option.option-1 strong {
-  color: var(--option-1);
-}
-
-.scenario-option.option-2 {
-  border-left-color: var(--option-2);
-}
-.scenario-option.option-2 strong {
-  color: var(--option-2);
-}
-
-.scenario-option.option-3 {
-  border-left-color: var(--option-3);
-}
-.scenario-option.option-3 strong {
-  color: var(--option-3);
-}
-
-.scenario-option.option-4 {
-  border-left-color: var(--option-4);
-}
-.scenario-option.option-4 strong {
-  color: var(--option-4);
-}
-
-.scenario-option p {
-  margin: 0.25rem 0 0 0;
-}
-
-@media (max-width: 720px) {
-  .scenario-options {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* Results */
 .result-item {
   border-left: 3px solid var(--accent-success);
@@ -329,17 +268,8 @@ textarea:focus {
 .progress-segment.option-1 {
   background: var(--option-1);
 }
-.progress-segment.option-2 {
-  background: var(--option-2);
-}
-.progress-segment.option-3 {
-  background: var(--option-3);
-}
 .progress-segment.option-4 {
   background: var(--option-4);
-}
-.progress-segment.undecided {
-  background: var(--undecided);
 }
 
 .progress-segment:hover {

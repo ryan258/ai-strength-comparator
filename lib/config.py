@@ -32,6 +32,12 @@ def _env_int(name: str, default: int) -> int:
         raise ValueError(f"{name} must be an integer.") from exc
 
 
+def _env_str(name: str) -> str:
+    """Read string env values as concrete strings."""
+    raw = os.getenv(name)
+    return raw.strip() if raw is not None else ""
+
+
 class AppConfig(BaseModel):
     model_config = ConfigDict(validate_default=True)
 
@@ -57,11 +63,11 @@ class AppConfig(BaseModel):
     MAX_ITERATIONS: int = Field(default_factory=lambda: _env_int("MAX_ITERATIONS", 20), ge=1)
 
     # URLs (required - no hardcoded defaults)
-    APP_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))
-    OPENROUTER_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL"))
+    APP_BASE_URL: str = Field(default_factory=lambda: _env_str("APP_BASE_URL"))
+    OPENROUTER_BASE_URL: str = Field(default_factory=lambda: _env_str("OPENROUTER_BASE_URL"))
 
     # Secrets
-    OPENROUTER_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
+    OPENROUTER_API_KEY: str = Field(default_factory=lambda: _env_str("OPENROUTER_API_KEY"))
 
     def validate_secrets(self) -> None:
         """Validate that required environment variables are present."""

@@ -1,15 +1,25 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
 import asyncio
+import sys
+from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from lib.ai_service import AIService
+from lib.analysis import AnalysisConfig, AnalysisEngine
+from lib.config import AppConfig
+
 load_dotenv()
 
-from lib.config import AppConfig
-from lib.ai_service import AIService
-from lib.analysis import AnalysisEngine, AnalysisConfig
-
-# Mock run data for capability scoring output
-run_data = {
+RUN_DATA: dict[str, Any] = {
     "modelName": "test-model",
     "capabilityId": "safety-1",
     "capabilityType": "capability",
@@ -31,49 +41,49 @@ run_data = {
     ],
 }
 
-async def verify() -> None:
-    # Load real config to hit real API (we need actual analysis)
-    # NOTE: This requires OPENROUTER_API_KEY to be set in .env
+
+def _resolve_analyst_model(config: AppConfig) -> str:
+    if config.ANALYST_MODEL:
+        return config.ANALYST_MODEL
+    if config.AVAILABLE_MODELS:
+        return config.AVAILABLE_MODELS[0].id
+    raise ValueError("No analyst model configured; set ANALYST_MODEL or populate models.json")
+
+
+async def verify() -> int:
     try:
         config = AppConfig.load()
         config.validate_secrets()
-    except ValueError as e:
-        print(f"Config Error: {e}")
-        return
+    except ValueError as exc:
+        print(f"Config error: {exc}")
+        return 1
 
     ai_service = AIService(
-        api_key=str(config.OPENROUTER_API_KEY),
+        api_key=config.OPENROUTER_API_KEY,
         base_url=config.OPENROUTER_BASE_URL,
         referer=config.APP_BASE_URL,
-        app_name=config.APP_NAME
+        app_name=config.APP_NAME,
     )
-
     engine = AnalysisEngine(ai_service)
-
-    if config.ANALYST_MODEL:
-        analyst_model = config.ANALYST_MODEL
-    elif config.AVAILABLE_MODELS:
-        analyst_model = config.AVAILABLE_MODELS[0].id
-    else:
-        raise ValueError("No analyst model configured; set ANALYST_MODEL or populate models.json")
+    analyst_model = _resolve_analyst_model(config)
 
     analysis_config = AnalysisConfig(
-        run_data=run_data,
+        run_data=RUN_DATA,
         analyst_model=analyst_model,
-        temperature=0.1  # Low temp for deterministic formatting
+        temperature=0.1,
     )
 
     print(f"Requesting analysis from {analyst_model}...")
     result = await engine.generate_insight(analysis_config)
-
     content = result["content"]
+
     print("\n--- Analysis Result Content ---\n")
     print(content)
     print("\n-------------------------------\n")
 
     if not isinstance(content, dict):
-        print("❌ FAILURE: Expected structured dict response.")
-        return
+        print("FAILURE: Expected structured dict response.")
+        return 1
 
     required_keys = [
         "executive_summary",
@@ -84,22 +94,17 @@ async def verify() -> None:
     ]
     missing_keys = [key for key in required_keys if key not in content]
     if missing_keys:
-        print(f"❌ FAILURE: Missing required keys: {missing_keys}")
-        return
+        print(f"FAILURE: Missing required keys: {missing_keys}")
+        return 1
 
-    if not isinstance(content["strengths"], list):
-        print("❌ FAILURE: strengths is not a list.")
-        return
+    for key in ("strengths", "weaknesses", "recommendations"):
+        if not isinstance(content.get(key), list):
+            print(f"FAILURE: {key} is not a list.")
+            return 1
 
-    if not isinstance(content["weaknesses"], list):
-        print("❌ FAILURE: weaknesses is not a list.")
-        return
+    print("SUCCESS: Structured analysis schema is valid.")
+    return 0
 
-    if not isinstance(content["recommendations"], list):
-        print("❌ FAILURE: recommendations is not a list.")
-        return
-
-    print("✅ SUCCESS: Structured analysis schema is valid.")
 
 if __name__ == "__main__":
-    asyncio.run(verify())
+    raise SystemExit(asyncio.run(verify()))

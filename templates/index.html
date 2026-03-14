@@ -119,8 +119,22 @@
                     hx-target="#results-area"
                     hx-swap="afterbegin"
                     hx-indicator="#loading"
+                    hx-vals='{"comparisonScope":"categories"}'
                 >
-                    Compare All Models
+                    Compare All Models by Category
+                </button>
+                <button
+                    type="button"
+                    class="btn"
+                    hx-post="/api/compare"
+                    hx-ext="json-enc"
+                    hx-include="#benchmark-form"
+                    hx-target="#results-area"
+                    hx-swap="afterbegin"
+                    hx-indicator="#loading"
+                    hx-vals='{"comparisonScope":"capability"}'
+                >
+                    Compare All Models on Selected Test
                 </button>
             </div>
         </form>

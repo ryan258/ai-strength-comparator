@@ -1,12 +1,30 @@
 from __future__ import annotations
 
-from lib.validation import QueryRequest
+import pytest
+from pydantic import ValidationError
+
+from lib.validation import ModelComparisonRequest, QueryRequest
 
 
 def test_query_request_accepts_capability_id() -> None:
     payload = QueryRequest(modelName="test/model", capabilityId="math_order_of_ops")
 
     assert payload.capability_id == "math_order_of_ops"
+
+
+def test_model_comparison_request_accepts_capability_scope_aliases() -> None:
+    payload = ModelComparisonRequest(
+        comparisonScope="capability",
+        capabilityId="math_order_of_ops",
+    )
+
+    assert payload.comparison_scope == "capability"
+    assert payload.capability_id == "math_order_of_ops"
+
+
+def test_model_comparison_request_requires_capability_id_for_capability_scope() -> None:
+    with pytest.raises(ValidationError, match="capabilityId is required"):
+        ModelComparisonRequest(comparisonScope="capability")
 
 
 def test_capability_endpoints_are_available(client) -> None:

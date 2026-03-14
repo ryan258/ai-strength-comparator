@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from lib.ai_service import AIModelNotFoundError
+
 
 def _structured_content() -> dict:
     return {
@@ -67,3 +69,27 @@ def test_aggregate_insights_endpoint_accepts_string_payload_json(client, monkeyp
     payload = response.json()
     assert payload["targetType"] == "comparison"
     assert "content" in payload
+
+
+def test_aggregate_insights_endpoint_returns_404_for_unknown_analyst_model(
+    client,
+    monkeypatch,
+) -> None:
+    services = client.app.state.services
+
+    async def raise_missing_model(_config) -> dict:
+        raise AIModelNotFoundError("missing analyst model", status_code=404)
+
+    monkeypatch.setattr(services.analysis_engine, "generate_aggregate_insight", raise_missing_model)
+
+    response = client.post(
+        "/api/insights",
+        json={
+            "targetType": "profile",
+            "payload": {"overallScore": 0.88, "tests": []},
+            "analystModel": "missing/model",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Requested analyst model not found."

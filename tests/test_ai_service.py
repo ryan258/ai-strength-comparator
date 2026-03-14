@@ -72,3 +72,13 @@ def test_get_model_response_reports_length_finish_reason_as_token_issue() -> Non
 
     with pytest.raises(Exception, match="max_tokens"):
         asyncio.run(service.get_model_response("test/model", "test prompt"))
+
+
+def test_ai_service_requires_base_url() -> None:
+    with pytest.raises(ValueError, match="base_url is required"):
+        AIService(
+            api_key="test-key",
+            base_url="",
+            referer="http://localhost",
+            app_name="test-app",
+        )
