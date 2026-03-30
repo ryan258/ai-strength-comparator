@@ -1,11 +1,7 @@
 [
   {
-    "id": "openrouter/healer-alpha",
-    "name": "Healer Alpha"
-  },
-  {
-    "id": "openrouter/hunter-alpha",
-    "name": "Hunter Alpha"
+    "id": "qwen/qwen3.6-plus-preview:free",
+    "name": "Qwen 3.6 Plus"
   },
   {
     "id": "nvidia/nemotron-3-super-120b-a12b:free",
